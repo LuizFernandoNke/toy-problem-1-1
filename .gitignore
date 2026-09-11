@@ -222,9 +222,23 @@ __marimo__/
 __pycache__/
 *.pyc
 
-# Arquivos pesados gerados pelo OpenFOAM
-template_case/processor*
-template_case/postProcessing
-template_case/5/
-template_case/*.log
+# Ignorar resultados de execuções dinâmicas (pastas criadas pelo pipeline)
+runs/
+
+# OpenFOAM: Resultados de tempo (ignora qualquer pasta numérica como 1, 5, 0.5, 100, etc., exceto a pasta 0 base)
+template_case/[1-9]*/
+template_case/0.*/
+
+# OpenFOAM: Malha gerada, logs e pós-processamento
+template_case/constant/polyMesh/
+template_case/processor*/
+template_case/postProcessing/
 template_case/postProcess/
+template_case/*.log
+template_case/*.foam
+template_case/*.OpenFOAM
+
+# Arquivos de sistema e IDEs
+.DS_Store
+.vscode/
+.idea/

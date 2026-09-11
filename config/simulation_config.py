@@ -28,7 +28,7 @@ class SimulationConfig(BaseModel):
     sigma: float = Field(default=0.03, ge=0, description="Tensão superficial N/m")
 
     # Malha e Paralelismo
-    mesh_factor: float = 1.0
+    mesh_factor: float = 1.000
     num_processors: int = 10
 
     # Atalhos/retrocompatibilidade para manter propriedades antigas funcionando
