@@ -222,8 +222,9 @@ __marimo__/
 __pycache__/
 *.pyc
 
-# Ignorar resultados de execuções dinâmicas (pastas criadas pelo pipeline)
-runs/
+# Ignorar resultados de execuções dinâmicas (mantém a pasta runs/ via .gitkeep)
+runs/*
+!runs/.gitkeep
 
 # OpenFOAM: Resultados de tempo (ignora qualquer pasta numérica como 1, 5, 0.5, 100, etc., exceto a pasta 0 base)
 template_case/[1-9]*/

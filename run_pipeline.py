@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import shutil
+import re
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -9,7 +10,12 @@ sys.path.append(str(ROOT_DIR))
 
 from config.simulation_config import SimulationConfig
 
-CASE_DIR = ROOT_DIR / "template_case"
+# Pasta base para templates e pasta de execuções paralelas
+TEMPLATE_CASE = ROOT_DIR / "template_case"
+RUNS_DIR = ROOT_DIR / "runs"
+
+# Modelos RANS que o professor pediu para comparar
+RANS_MODELS = ["kEpsilon", "kOmegaSST"]
 
 def get_openfoam_env() -> str:
     possible_paths = [
@@ -25,14 +31,13 @@ def get_openfoam_env() -> str:
 
 OF_ENV = get_openfoam_env()
 
-def reset_case_directory():
-    print("Limpando diretórios antigos e preparando estrutura...")
-    if CASE_DIR.exists():
-        shutil.rmtree(CASE_DIR)
-    
-    (CASE_DIR / "0").mkdir(parents=True, exist_ok=True)
-    (CASE_DIR / "constant").mkdir(parents=True, exist_ok=True)
-    (CASE_DIR / "system").mkdir(parents=True, exist_ok=True)
+def reset_directory(dir_path: Path):
+    """Limpa e cria a estrutura base de um diretório de simulação."""
+    if dir_path.exists():
+        shutil.rmtree(dir_path)
+    (dir_path / "0").mkdir(parents=True, exist_ok=True)
+    (dir_path / "constant").mkdir(parents=True, exist_ok=True)
+    (dir_path / "system").mkdir(parents=True, exist_ok=True)
 
 def run_step(description: str, command: list[str], log_file_path: Path = None):
     print(f"\n[Executando]: {description}")
@@ -58,48 +63,91 @@ def run_step(description: str, command: list[str], log_file_path: Path = None):
         print(f"\n[ERRO]: Falha na etapa -> {description}")
         sys.exit(1)
 
+def set_ras_model(case_dir: Path, model_name: str):
+    """Atualiza a propriedade RASModel no arquivo de turbulência do OpenFOAM."""
+    mom_file = case_dir / "constant" / "momentumTransport"
+    turb_file = case_dir / "constant" / "turbulenceProperties"
+    target_file = mom_file if mom_file.exists() else turb_file
+
+    if target_file.exists():
+        with open(target_file, "r") as f:
+            content = f.read()
+        
+        updated_content = re.sub(r'(RASModel\s+)[^;]+;', rf'\g<1>{model_name};', content)
+
+        with open(target_file, "w") as f:
+            f.write(updated_content)
+
 def main():
     print("=" * 60)
-    print("INICIANDO PIPELINE CFD - MULTIFÁSICO (ÁGUA + ÓLEO)")
+    print("INICIANDO PIPELINE CFD - ESTUDO COMPARATIVO RANS (k-e vs k-w)")
     print("=" * 60)
 
     cfg = SimulationConfig()
 
-    # 1. Limpeza total da pasta do caso
-    reset_case_directory()
+    # ------------------------------------------------------------------
+    # ETAPA 1: Construção da Pasta Modelo (Template)
+    # ------------------------------------------------------------------
+    print("\n--- PASSO 1: Gerando Arquivos Base no Template ---")
+    reset_directory(TEMPLATE_CASE)
 
-    # 2. Geração dos dicionários Python -> OpenFOAM
     run_step("Criando condições iniciais e de contorno (0/)", [sys.executable, "scripts/setup_0.py"])
     run_step("Criando propriedades físicas dos fluidos (constant/)", [sys.executable, "scripts/setup_constant.py"])
     run_step("Criando esquemas numéricos e de controle (system/)", [sys.executable, "scripts/setup_system.py"])
-    
-    # Gerar a malha DEPOIS de preparar o diretório system/
     run_step("Gerando arquivo blockMeshDict", [sys.executable, "scripts/generate_mesh.py"])
 
-    # 3. Construção da Malha e Inicialização de Fases
-    run_step("Gerando malha 3D com blockMesh", ["blockMesh", "-case", str(CASE_DIR)])
-    run_step("Validando malha pré-simulação", [sys.executable, "scripts/post_process.py", "--pre"])
-    run_step("Inicializando fração de água/óleo com setFields", ["setFields", "-case", str(CASE_DIR)])
+    # ------------------------------------------------------------------
+    # ETAPA 2: Loop de Execução dos Modelos de Turbulência
+    # ------------------------------------------------------------------
+    RUNS_DIR.mkdir(exist_ok=True)
 
-    # 4. Decomposição e Execução em Paralelo (interFoam)
-    run_step("Decompondo domínio com decomposePar", ["decomposePar", "-case", str(CASE_DIR)])
+    for model in RANS_MODELS:
+        print("\n" + "=" * 60)
+        print(f"  INICIANDO SIMULAÇÃO PARA O MODELO: {model}")
+        print("=" * 60)
 
-    log_file = CASE_DIR / "interFoam.log"
-    num_procs = str(cfg.num_processors)
+        case_dir = RUNS_DIR / f"run_{model}"
+        
+        # 1. Copia o template pronto para a pasta da execução específica
+        if case_dir.exists():
+            shutil.rmtree(case_dir)
+        shutil.copytree(TEMPLATE_CASE, case_dir)
 
-    run_step(
-        f"Rodando interFoam em paralelo ({num_procs} cores)",
-        ["mpirun", "-np", num_procs, "interFoam", "-parallel", "-case", str(CASE_DIR)],
-        log_file_path=log_file
-    )
+        # 2. Ajusta o modelo RANS
+        set_ras_model(case_dir, model)
 
-    # 5. Reconstrução e Pós-Processamento
-    run_step("Reconstruindo domínio paralelo", ["reconstructPar", "-latestTime", "-case", str(CASE_DIR)])
-    run_step("Processando resultados finais", [sys.executable, "scripts/post_process.py"])
+        # 3. Construção da Malha e Inicialização de Fases
+        run_step(f"[{model}] Gerando malha com blockMesh", ["blockMesh", "-case", str(case_dir)])
+        run_step(f"[{model}] Validando malha pré-simulação", [sys.executable, "scripts/post_process.py", "--pre"])
+        run_step(f"[{model}] Inicializando fração água/óleo (setFields)", ["setFields", "-case", str(case_dir)])
 
+        # 4. Decomposição e Execução Paralela
+        run_step(f"[{model}] Decompondo domínio (decomposePar)", ["decomposePar", "-case", str(case_dir)])
+
+        log_file = case_dir / f"interFoam_{model}.log"
+        num_procs = str(cfg.num_processors)
+
+        run_step(
+            f"[{model}] Rodando interFoam ({num_procs} cores)",
+            ["mpirun", "-np", num_procs, "interFoam", "-parallel", "-case", str(case_dir)],
+            log_file_path=log_file
+        )
+
+        # 5. Reconstrução e Arquivo para ParaView
+        run_step(f"[{model}] Reconstruindo domínio (reconstructPar)", ["reconstructPar", "-latestTime", "-case", str(case_dir)])
+        
+        # Cria arquivo .foam para facilitar a abertura no ParaView
+        (case_dir / f"{model}.foam").touch()
+
+    # ------------------------------------------------------------------
+    # ETAPA 3: Pós-Processamento dos Casos Executados
+    # ------------------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("PASSO 3: Pós-Processamento e Análise de Resultados")
     print("=" * 60)
-    print("PIPELINE MULTIFÁSICO EXECUTADO COM SUCESSO!")
-    print("=" * 60)
-
+    
+    run_step("Processando resultados kEpsilon", [sys.executable, "scripts/post_process.py", "-case", str(RUNS_DIR / "run_kEpsilon")])
+    run_step("Processando resultados kOmegaSST", [sys.executable, "scripts/post_process.py", "-case", str(RUNS_DIR / "run_kOmegaSST")])
+    
 if __name__ == "__main__":
     main()

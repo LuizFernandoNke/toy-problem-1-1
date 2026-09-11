@@ -193,6 +193,53 @@ boundaryField
 """
     (zero_dir / "omega").write_text(omega_content, encoding="utf-8")
 
+# ?. epsilon (Taxa de Dissipação da Energia Cinética Turbulenta)
+    epsilon_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                                                                 |
+| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     | Version:  v2606                                 |
+|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\\\/     M anipulation  |                                                 |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      epsilon;
+}}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [0 2 -3 0 0 0 0];
+
+internalField   uniform 0.001;
+
+boundaryField
+{{
+    inlet
+    {{
+        type            fixedValue;
+        value           $internalField;
+    }}
+
+    walls
+    {{
+        type            epsilonWallFunction;
+        value           $internalField;
+    }}
+
+    ".*"
+    {{
+        type            inletOutlet;
+        inletValue      $internalField;
+        value           $internalField;
+    }}
+}}
+
+// ************************************************************************* //
+"""
+    (zero_dir / "epsilon").write_text(epsilon_content, encoding="utf-8")
+
     # 5. p_rgh (Pressão Hidrostática Modificada)
     p_rgh_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
