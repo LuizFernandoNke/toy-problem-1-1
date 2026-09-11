@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Ambiente Virtual Python
+.venv/
+__pycache__/
+*.pyc
+
+# Arquivos pesados gerados pelo OpenFOAM
+template_case/processor*
+template_case/postProcessing
+template_case/5/
+template_case/*.log
+template_case/postProcess/
