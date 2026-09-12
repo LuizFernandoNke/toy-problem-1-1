@@ -6,132 +6,23 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from config.simulation_config import SimulationConfig
 
-
 def setup_system_files(cfg: SimulationConfig, case_dir: Path):
     """
-    Gera todos os arquivos da pasta 'system' (controlDict, fvSchemes, fvSolution,
-    setFieldsDict e decomposeParDict) utilizando f-strings puras do Python.
+    Gera todos os arquivos do diretório 'system' (controlDict, fvSchemes, fvSolution, sampleDict e decomposeParDict).
     """
     system_dir = case_dir / "system"
     system_dir.mkdir(parents=True, exist_ok=True)
 
-# -------------------------------------------------------------------------
-    # 1. Configurar controlDict
     # -------------------------------------------------------------------------
-    control_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                 |                                                 |
-| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2606                                 |
-|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation  |                                                 |
-\\*---------------------------------------------------------------------------*/
-FoamFile
-{{
-    version     2.0;
-    format      ascii;
-    class       dictionary;
-    object      controlDict;
-}}
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-application     interFoam;
-
-startFrom       latestTime;
-startTime       0;
-stopAt          endTime;
-endTime         {getattr(cfg, 'end_time', 5)};
-deltaT          {getattr(cfg, 'delta_t', 0.1)};
-
-writeControl    adjustable;
-writeInterval   1;
-purgeWrite      0;
-writeFormat     ascii;
-writePrecision  6;
-writeCompression on;
-timeFormat      general;
-timePrecision   6;
-runTimeModifiable yes;
-
-adjustTimeStep  yes;
-maxCo           1;
-maxAlphaCo      1;
-maxDeltaT       1;
-
-functions
-{{
-    inletFlux
-    {{
-        type            surfaceFieldValue;
-        libs            (fieldFunctionObjects);
-        writeControl    timeStep;
-        log             true;
-        writeFields     false;
-        regionType      patch;
-        name            inlet;
-        operation       sum;
-
-        fields
-        (
-            rhoPhi
-        );
-    }}
-
-    outletFlux
-    {{
-        $inletFlux;
-        name            outlet;
-    }}
-
-    sTransport
-    {{
-        type            scalarTransport;
-        libs            (solverFunctionObjects);
-
-        enabled         true;
-        writeControl    writeTime;
-        writeInterval   1;
-
-        field           s;
-        bounded01       false;
-        phase           alpha.water;
-
-        write           true;
-
-        fvOptions
-        {{
-            unitySource
-            {{
-                type            scalarSemiImplicitSource;
-                enabled         true;
-
-                selectionMode   all;
-                volumeMode      specific;
-
-                sources
-                {{
-                    s           (1 0);
-                }}
-            }}
-        }}
-
-        resetOnStartUp  false;
-    }}
-}}
-
-// ************************************************************************* //
-"""
-    (system_dir / "controlDict").write_text(control_dict)
-
+    # 1. fvSchemes (Compatível com kEpsilon e kOmegaSST)
     # -------------------------------------------------------------------------
-    # 2. Configurar fvSchemes
-    # -------------------------------------------------------------------------
-    fv_schemes = """/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                 |                                                 |
-| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2606                                 |
-|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation  |                                                 |
-\\*---------------------------------------------------------------------------*/
+    fv_schemes = r"""/*--------------------------------*- C++ -*----------------------------------*\
+| =========                                                                 |
+| \\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     Version:  v2606                                 |
+|   \\  /    A nd           Website:  www.openfoam.com                      |
+|    \\/     M anipulation                                                  |
+\*---------------------------------------------------------------------------*/
 FoamFile
 {
     version     2.0;
@@ -153,17 +44,23 @@ gradSchemes
 
 divSchemes
 {
-    default             none;
-
-    div(rhoPhi,U)       Gauss linearUpwind grad(U);
-    div(phi,alpha)      Gauss vanLeer;
-    div(phirb,alpha)    Gauss linear;
-
-    "div\\(phi,(k|omega)\\)"      Gauss upwind;
-    div(((rho*nuEff)*dev2(T(grad(U))))) Gauss linear;
-
-    div(phi,s)   Gauss vanLeer;
-    div(phirb,s) Gauss linear;
+    default                         none;
+    
+    // Campo de velocidade/momento
+    "div\(.*phi.*,U\)"                      Gauss linearUpwind grad(U);
+    
+    // Multifase (VOF / alpha)
+    "div\(phi,alpha.*\)"                    Gauss vanLeer;
+    "div\(phirb,alpha.*\)"                  Gauss linear;
+    
+    // Campos de Turbulencia RANS (k, epsilon, omega, nut)
+    "div\(.*phi.*,(k|epsilon|omega|nut)\)"  Gauss upwind;
+    
+    // Tensores de viscosidade e termos difusivos
+    "div\(.*dev2\(T\(grad\(U\)\)\)\)"       Gauss linear;
+    
+    // Fallback generico
+    "div\(.*\)"                             Gauss linear;
 }
 
 laplacianSchemes
@@ -181,6 +78,7 @@ snGradSchemes
     default         corrected;
 }
 
+// Calculo de distancia da parede exigido pelo kOmegaSST
 wallDist
 {
     method          meshWave;
@@ -188,17 +86,17 @@ wallDist
 
 // ************************************************************************* //
 """
-    (system_dir / "fvSchemes").write_text(fv_schemes)
+    (system_dir / "fvSchemes").write_text(fv_schemes, encoding="utf-8")
 
     # -------------------------------------------------------------------------
-    # 3. Configurar fvSolution
+    # 2. fvSolution (Solucoes de Matriz atualizadas com pcorr)
     # -------------------------------------------------------------------------
     fv_solution = """/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                 |                                                 |
-| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2606                                 |
-|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation  |                                                 |
+| =========                                                                 |
+| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     Version:  v2606                                 |
+|   \\\\  /    A nd           Website:  www.openfoam.com                      |
+|    \\\\/     M anipulation                                                  |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -213,67 +111,44 @@ solvers
 {
     "alpha.water.*"
     {
-        nAlphaCorr      1;
+        nAlphaCorr      2;
         nAlphaSubCycles 1;
         cAlpha          1;
-
-        MULESCorr       yes;
-        nLimiterIter    3;
-
-        solver          smoothSolver;
-        smoother        symGaussSeidel;
-        tolerance       1e-8;
-        relTol          0;
     }
 
-    "pcorr.*"
+    "(pcorr|pcorrFinal)"
     {
         solver          PCG;
-        preconditioner
-        {
-            preconditioner  GAMG;
-            tolerance       1e-5;
-            relTol          0;
-            smoother        GaussSeidel;
-        }
-        tolerance       1e-5;
-        relTol          0;
-        maxIter         50;
-    }
-
-    p_rgh
-    {
-        solver           GAMG;
-        tolerance        5e-9;
-        relTol           0.01;
-        smoother         GaussSeidel;
-        maxIter          50;
-    };
-
-    p_rghFinal
-    {
-        $p_rgh;
-        tolerance       5e-9;
+        preconditioner  DIC;
+        tolerance       1e-05;
         relTol          0;
     }
 
-    "(U|k|omega|s).*"
+    "(p_rgh|p_rghFinal)"
     {
-        solver          smoothSolver;
-        smoother        symGaussSeidel;
-        nSweeps         1;
-        tolerance       1e-6;
+        solver          GAMG;
+        tolerance       1e-07;
+        relTol          0.01;
+        smoother        GaussSeidel;
+    }
+
+    "(U|k|epsilon|omega|B|nuTilda).*"
+    {
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-08;
         relTol          0.1;
-    };
+    }
 }
 
 PIMPLE
 {
-    momentumPredictor no;
-    nCorrectors     2;
+    momentumPredictor   yes;
+    nCorrectors         2;
     nNonOrthogonalCorrectors 0;
 }
 
+// Limites numéricos para prevenir estouros em modelos k-omega SST
 relaxationFactors
 {
     equations
@@ -281,60 +156,127 @@ relaxationFactors
         ".*" 1;
     }
 }
-
 // ************************************************************************* //
 """
-    (system_dir / "fvSolution").write_text(fv_solution)
+    (system_dir / "fvSolution").write_text(fv_solution, encoding="utf-8")
 
     # -------------------------------------------------------------------------
-    # 4. Configurar setFieldsDict
+    # 3. controlDict
     # -------------------------------------------------------------------------
-    set_fields = """/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                 |                                                 |
-| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2606                                 |
-|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation  |                                                 |
+    end_time = getattr(cfg, 'end_time', 10)
+    delta_t = getattr(cfg, 'delta_t', 0.1)
+
+    control_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                                                                 |
+| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     Version:  v2606                                 |
+|   \\\\  /    A nd           Website:  www.openfoam.com                      |
+|    \\\\/     M anipulation                                                  |
 \\*---------------------------------------------------------------------------*/
 FoamFile
-{
+{{
     version     2.0;
     format      ascii;
     class       dictionary;
-    object      setFieldsDict;
-}
+    object      controlDict;
+}}
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-defaultFieldValues
+application     interFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         {cfg.end_time};
+deltaT          {cfg.delta_t};
+writeControl    timeStep;
+writeInterval   {cfg.write_interval};
+purgeWrite      0;
+writeFormat     ascii;
+writePrecision  6;
+writeCompression off;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable true;
+adjustTimeStep  yes;
+maxCo           {cfg.max_co};
+maxAlphaCo      {cfg.max_alpha_co};
+maxDeltaT       {cfg.max_delta_t};
+
+// ************************************************************************* //
+"""
+    (system_dir / "controlDict").write_text(control_dict, encoding="utf-8")
+
+    # -------------------------------------------------------------------------
+    # 4. sampleDict (Amostragem para Delta P e Perfil de Velocidade)
+    # -------------------------------------------------------------------------
+    R = getattr(cfg, 'diameter', 0.05) / 2.0
+    L = getattr(cfg, 'length', 2.0)
+    
+    y_min, y_max = -R, R
+    z_sample = L * 0.875  # 1.75 m para L = 2.0 m
+    
+    sample_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                                                                 |
+| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     Version:  v2606                                 |
+|   \\\\  /    A nd           Website:  www.openfoam.com                      |
+|    \\\\/     M anipulation                                                  |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      sampleDict;
+}}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+type            sets;
+writeControl    writeTime;
+interpolationScheme cellPoint;
+setFormat       raw;
+
+sets
 (
-    volScalarFieldValue alpha.water 0
+    // Perfil de velocidade transversal
+    profile_mid
+    {{
+        type            uniform;
+        axis            y;
+        start           (0 {y_min*0.95} {z_sample});
+        end             (0 {y_max*0.95} {z_sample});
+        nPoints         100;
+    }}
+    // Linha central para calcular Delta P ao longo de Z
+    center_line
+    {{
+        type            uniform;
+        axis            z;
+        start           (0 0 {L*0.01});
+        end             (0 0 {L*0.99});
+        nPoints         200;
+    }}
 );
 
-regions
+fields
 (
-    boxToCell
-    {
-        box (-10 -20 -10) (50 20 2.2);
-        fieldValues
-        (
-            volScalarFieldValue alpha.water 1
-        );
-    }
+    p_rgh
+    U
 );
 
 // ************************************************************************* //
 """
-    (system_dir / "setFieldsDict").write_text(set_fields)
+    (system_dir / "sampleDict").write_text(sample_dict, encoding="utf-8")
 
     # -------------------------------------------------------------------------
-    # 5. Configurar decomposeParDict
+    # 5. decomposeParDict (Configuração de Decomposição Paralela)
     # -------------------------------------------------------------------------
-    decompose_par = f"""/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                 |                                                 |
-| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2606                                 |
-|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation  |                                                 |
+    decompose_par_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                                                                  |
+| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     Version:  v2606                                |
+|   \\\\  /    A nd           Website:  www.openfoam.com                      |
+|    \\\\/     M anipulation                                                   |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {{
@@ -350,66 +292,11 @@ method          scotch;
 
 // ************************************************************************* //
 """
-    (system_dir / "decomposeParDict").write_text(decompose_par)
+    (system_dir / "decomposeParDict").write_text(decompose_par_dict, encoding="utf-8")
 
-    print("Arquivos do diretório 'system/' gerados com sucesso.")
-
-# -------------------------------------------------------------------------
-    # 5. Configurar sampleDict (Pós-processamento de U e P)
-    # -------------------------------------------------------------------------
-    sample_dict = """/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                                                                 |
-| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     Version:  v2606                                 |
-|   \\\\  /    A nd           Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation                                                  |
-\\*---------------------------------------------------------------------------*/
-FoamFile
-{
-    version     2.0;
-    format      ascii;
-    class       dictionary;
-    object      sampleDict;
-}
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-type            sets;
-libs            ("libsampling.so");
-setFormat       raw;
-
-sets
-{
-    // Linha vertical para capturar o perfil de velocidade U no centro do domínio
-    profile_mid
-    {
-        type        lineCell;
-        axis        y;
-        start       (0.5 0.0 0.005);
-        end         (0.5 0.1 0.005);
-    }
-
-    // Linha horizontal no centro do canal para capturar a queda de pressão p_rgh
-    center_line
-    {
-        type        lineCell;
-        axis        x;
-        start       (0.0 0.05 0.005);
-        end         (1.0 0.05 0.005);
-    }
-}
-
-fields          (U p_rgh p);
-
-// ************************************************************************* //
-"""
-    (system_dir / "sampleDict").write_text(sample_dict)
-
-def main():
-    cfg = SimulationConfig()
-    root_dir = Path(__file__).resolve().parent.parent
-    case_dir = root_dir / "template_case"
-    setup_system_files(cfg, case_dir)
-
+    print("Arquivos do diretório 'system/' (incluindo decomposeParDict) gerados com sucesso.")
 
 if __name__ == "__main__":
-    main()
+    config = SimulationConfig()
+    target_case = Path(__file__).resolve().parent.parent / "template_case"
+    setup_system_files(config, target_case)

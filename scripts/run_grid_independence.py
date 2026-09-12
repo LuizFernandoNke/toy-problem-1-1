@@ -33,64 +33,44 @@ def run_cmd(cmd: str, cwd: Path):
     subprocess.run(f"{OF_ENV} {cmd}", shell=True, executable="/bin/bash", cwd=cwd, check=True, env=env)
 
 def extract_dp_and_yplus(case_dir: Path) -> tuple[float, float]:
-    current_env = os.environ.copy()
 
-    # 1. Extrai o y+ médio (lê a última ocorrência no log do OpenFOAM)
-    cmd_yplus = f"{OF_ENV} mpirun -np 10 interFoam -parallel -case {case_dir} -postProcess -func yPlus -latestTime"
-    res_yplus = subprocess.run(cmd_yplus, shell=True, executable="/bin/bash", capture_output=True, text=True, env=current_env)
+    # 1. Garante reconstrução e pós-processamento do tempo final
+    run_cmd("reconstructPar -latestTime", case_dir)
+    run_cmd("postProcess -func sampleDict -latestTime", case_dir)
+    run_cmd("interFoam -postProcess -func yPlus -latestTime", case_dir)
+
+    base_post = case_dir / "postProcessing"
     
-    matches_y = re.findall(r"average\s*=\s*([\d\.\-eE]+)", res_yplus.stdout)
-    yplus_avg = float(matches_y[-1]) if matches_y else 0.0
+    # 2. Extração do y+ médio
+    yplus_avg = 0.0
+    yplus_files = sorted([f for f in base_post.rglob("*.dat") if "yPlus" in str(f) and f.is_file()])
+    if yplus_files:
+        try:
+            with open(yplus_files[-1], 'r') as f:
+                lines = [l.strip() for l in f if l.strip() and not l.startswith('#')]
+                if lines:
+                    parts = lines[-1].split()
+                    if len(parts) >= 5:
+                        yplus_avg = float(parts[4])  # Índice 4 contém a média
+        except Exception:
+            pass
 
-    # 2. Extrai a pressão no inlet e no outlet
-    cmd_pin = f"{OF_ENV} mpirun -np 10 postProcess -parallel -case {case_dir} -func 'patchAverage(name=inlet, field=p_rgh)' -latestTime"
-    cmd_pout = f"{OF_ENV} mpirun -np 10 postProcess -parallel -case {case_dir} -func 'patchAverage(name=outlet, field=p_rgh)' -latestTime"
-
-    res_pin = subprocess.run(cmd_pin, shell=True, executable="/bin/bash", capture_output=True, text=True, env=current_env)
-    res_pout = subprocess.run(cmd_pout, shell=True, executable="/bin/bash", capture_output=True, text=True, env=current_env)
-
-    # O OpenFOAM imprime a média no terminal com este padrão exato:
-    # "areaAverage(inlet) of p_rgh = 12.345" ou "average(inlet) = 12.345"
-    p_in_match = re.findall(r"(?:average|areaAverage)\([^)]+\)\s*(?:of\s+\w+\s*)?=\s*([\d\.\-eE]+)", res_pin.stdout)
-    p_out_match = re.findall(r"(?:average|areaAverage)\([^)]+\)\s*(?:of\s+\w+\s*)?=\s*([\d\.\-eE]+)", res_pout.stdout)
-
-    if p_in_match and p_out_match:
-        p_in = float(p_in_match[-1])
-        p_out = float(p_out_match[-1])
-        delta_p = abs(p_in - p_out)
-    else:
-        # Se falhar via CLI paralelo, tenta ler a pasta postProcessing como fallback
-        delta_p = read_dp_from_postprocessing_files(case_dir)
+    # 3. Extração do Delta P via center_line (do sampleDict)
+    delta_p = 0.0
+    center_files = sorted([f for f in base_post.rglob("*center_line*") if f.is_file()])
+    if center_files:
+        try:
+            target_file = center_files[-1]
+            import pandas as pd
+            df = pd.read_csv(target_file, sep=r'\s+', comment='#', header=None, engine='python')
+            if not df.empty and df.shape[1] >= 2:
+                p_in = float(df.iloc[0, 1])   # Pressão na entrada (Z_min)
+                p_out = float(df.iloc[-1, 1]) # Pressão na saída (Z_max)
+                delta_p = abs(p_in - p_out)
+        except Exception:
+            pass
 
     return delta_p, yplus_avg
-
-
-def read_dp_from_postprocessing_files(case_dir: Path) -> float:
-    """Procura recursivamente por qualquer arquivo .dat gerado pelo patchAverage"""
-    post_dir = case_dir / "postProcessing"
-    if not post_dir.exists():
-        return 0.0
-
-    p_in, p_out = None, None
-    
-    # Procura arquivos de superfície dentro de postProcessing
-    for dat_file in post_dir.rglob("*.dat"):
-        file_str = str(dat_file).lower()
-        if "inlet" in file_str:
-            with open(dat_file, "r") as f:
-                lines = [l.strip() for l in f.readlines() if l.strip() and not l.startswith("#")]
-                if lines:
-                    p_in = float(lines[-1].split()[-1])
-        elif "outlet" in file_str:
-            with open(dat_file, "r") as f:
-                lines = [l.strip() for l in f.readlines() if l.strip() and not l.startswith("#")]
-                if lines:
-                    p_out = float(lines[-1].split()[-1])
-
-    if p_in is not None and p_out is not None:
-        return abs(p_in - p_out)
-    
-    return 0.0
 
 def update_simulation_config_factor(recommended_factor: float):
     """Atualiza a linha 'mesh_factor' no simulation_config.py com o fator ideal."""

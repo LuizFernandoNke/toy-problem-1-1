@@ -147,47 +147,52 @@ boundaryField
     (zero_dir / "nut").write_text(nut_content, encoding="utf-8")
 
     # 4. omega (Taxa de Dissipação Específica)
-    omega_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                 |                                                 |
-| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2606                                 |
-|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation  |                                                 |
+    omega_content = """/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                                                                 |
+| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     Version:  v2606                                 |
+|   \\\\  /    A nd           Website:  www.openfoam.com                      |
+|    \\\\/     M anipulation                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
-{{
+{
     version     2.0;
     format      ascii;
     class       volScalarField;
     object      omega;
-}}
+}
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 dimensions      [0 0 -1 0 0 0 0];
 
-internalField   uniform 0.003;
+internalField   uniform 10; // Valor estritamente > 0
 
 boundaryField
-{{
-    inlet
-    {{
-        type            fixedValue;
-        value           $internalField;
-    }}
-
+{
     walls
-    {{
+    {
         type            omegaWallFunction;
-        value           $internalField;
-    }}
+        value           uniform 10;
+    }
 
-    ".*"
-    {{
+    inlet
+    {
+        type            fixedValue;
+        value           uniform 10;
+    }
+
+    outlet
+    {
+        type            zeroGradient;
+    }
+
+    atmosphere
+    {
         type            inletOutlet;
-        inletValue      $internalField;
-        value           $internalField;
-    }}
-}}
+        inletValue      uniform 10;
+        value           uniform 10;
+    }
+}
 
 // ************************************************************************* //
 """
