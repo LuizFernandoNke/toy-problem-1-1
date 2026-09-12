@@ -215,12 +215,16 @@ maxDeltaT       {cfg.max_delta_t};
     y_min, y_max = -R, R
     z_sample = L * 0.875  # 1.75 m para L = 2.0 m
     
+    # Trecho isolado plenamente desenvolvido (50% a 90% do duto)
+    z_start_dev = L * 0.50
+    z_end_dev = L * 0.90
+    
     sample_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                                                                 |
+| =========                                                                |
 | \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     Version:  v2606                                 |
+|  \\\\    /   O peration     Version:  v2606                                |
 |   \\\\  /    A nd           Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation                                                  |
+|    \\\\/     M anipulation                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {{
@@ -247,14 +251,15 @@ sets
         end             (0 {y_max*0.95} {z_sample});
         nPoints         100;
     }}
-    // Linha central para calcular Delta P ao longo de Z
+
+    // Linha central focada estritamente no trecho plenamente desenvolvido
     center_line
     {{
         type            uniform;
         axis            z;
-        start           (0 0 {L*0.01});
-        end             (0 0 {L*0.99});
-        nPoints         200;
+        start           (0 0 {z_start_dev});
+        end             (0 0 {z_end_dev});
+        nPoints         100;
     }}
 );
 

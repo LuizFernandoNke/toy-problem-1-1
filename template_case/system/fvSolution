@@ -1,9 +1,9 @@
 /*--------------------------------*- C++ -*----------------------------------*\
-| =========                 |                                                 |
-| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     | Version:  v2606                                 |
-|   \\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\/     M anipulation  |                                                 |
+| =========                                                                 |
+| \\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     Version:  v2606                                 |
+|   \\  /    A nd           Website:  www.openfoam.com                      |
+|    \\/     M anipulation                                                  |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -18,67 +18,44 @@ solvers
 {
     "alpha.water.*"
     {
-        nAlphaCorr      1;
+        nAlphaCorr      2;
         nAlphaSubCycles 1;
         cAlpha          1;
-
-        MULESCorr       yes;
-        nLimiterIter    3;
-
-        solver          smoothSolver;
-        smoother        symGaussSeidel;
-        tolerance       1e-8;
-        relTol          0;
     }
 
-    "pcorr.*"
+    "(pcorr|pcorrFinal)"
     {
         solver          PCG;
-        preconditioner
-        {
-            preconditioner  GAMG;
-            tolerance       1e-5;
-            relTol          0;
-            smoother        GaussSeidel;
-        }
-        tolerance       1e-5;
-        relTol          0;
-        maxIter         50;
-    }
-
-    p_rgh
-    {
-        solver           GAMG;
-        tolerance        5e-9;
-        relTol           0.01;
-        smoother         GaussSeidel;
-        maxIter          50;
-    };
-
-    p_rghFinal
-    {
-        $p_rgh;
-        tolerance       5e-9;
+        preconditioner  DIC;
+        tolerance       1e-05;
         relTol          0;
     }
 
-    "(U|k|omega|s).*"
+    "(p_rgh|p_rghFinal)"
     {
-        solver          smoothSolver;
-        smoother        symGaussSeidel;
-        nSweeps         1;
-        tolerance       1e-6;
+        solver          GAMG;
+        tolerance       1e-07;
+        relTol          0.01;
+        smoother        GaussSeidel;
+    }
+
+    "(U|k|epsilon|omega|B|nuTilda).*"
+    {
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-08;
         relTol          0.1;
-    };
+    }
 }
 
 PIMPLE
 {
-    momentumPredictor no;
-    nCorrectors     2;
+    momentumPredictor   yes;
+    nCorrectors         2;
     nNonOrthogonalCorrectors 0;
 }
 
+// Limites numéricos para prevenir estouros em modelos k-omega SST
 relaxationFactors
 {
     equations
@@ -86,5 +63,4 @@ relaxationFactors
         ".*" 1;
     }
 }
-
 // ************************************************************************* //

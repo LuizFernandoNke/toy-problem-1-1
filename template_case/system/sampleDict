@@ -15,30 +15,36 @@ FoamFile
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 type            sets;
-libs            ("libsampling.so");
+writeControl    writeTime;
+interpolationScheme cellPoint;
 setFormat       raw;
 
 sets
-{
-    // Linha vertical para capturar o perfil de velocidade U no centro do domínio
+(
+    // Perfil de velocidade transversal
     profile_mid
     {
-        type        lineCell;
-        axis        y;
-        start       (0.5 0.0 0.005);
-        end         (0.5 0.1 0.005);
+        type            uniform;
+        axis            y;
+        start           (0 -0.02375 1.75);
+        end             (0 0.02375 1.75);
+        nPoints         100;
     }
-
-    // Linha horizontal no centro do canal para capturar a queda de pressão p_rgh
+    // Linha central para calcular Delta P ao longo de Z
     center_line
     {
-        type        lineCell;
-        axis        x;
-        start       (0.0 0.05 0.005);
-        end         (1.0 0.05 0.005);
+        type            uniform;
+        axis            z;
+        start           (0 0 0.02);
+        end             (0 0 1.98);
+        nPoints         200;
     }
-}
+);
 
-fields          (U p_rgh p);
+fields
+(
+    p_rgh
+    U
+);
 
 // ************************************************************************* //

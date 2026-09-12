@@ -243,3 +243,18 @@ template_case/*.OpenFOAM
 .DS_Store
 .vscode/
 .idea/
+
+# Ambiente Virtual
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Pastas de Simulação e Dados Pesados do OpenFOAM
+runs/
+*.log
+postProcessing/
+
+# Arquivos do sistema e VS Code
+.DS_Store
+.vscode/

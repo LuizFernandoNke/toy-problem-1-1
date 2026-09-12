@@ -1,9 +1,9 @@
 /*--------------------------------*- C++ -*----------------------------------*\
-| =========                 |                                                 |
-| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     | Version:  v2606                                 |
-|   \\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\/     M anipulation  |                                                 |
+| =========                                                                 |
+| \\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     Version:  v2606                                 |
+|   \\  /    A nd           Website:  www.openfoam.com                      |
+|    \\/     M anipulation                                                  |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -15,87 +15,23 @@ FoamFile
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 application     interFoam;
-
-startFrom       latestTime;
+startFrom       startTime;
 startTime       0;
 stopAt          endTime;
-endTime         5;
+endTime         10.0;
 deltaT          0.1;
-
-writeControl    adjustable;
-writeInterval   1;
+writeControl    timeStep;
+writeInterval   10;
 purgeWrite      0;
 writeFormat     ascii;
 writePrecision  6;
-writeCompression on;
+writeCompression off;
 timeFormat      general;
 timePrecision   6;
-runTimeModifiable yes;
-
+runTimeModifiable true;
 adjustTimeStep  yes;
-maxCo           1;
-maxAlphaCo      1;
-maxDeltaT       1;
-
-functions
-{
-    inletFlux
-    {
-        type            surfaceFieldValue;
-        libs            (fieldFunctionObjects);
-        writeControl    timeStep;
-        log             true;
-        writeFields     false;
-        regionType      patch;
-        name            inlet;
-        operation       sum;
-
-        fields
-        (
-            rhoPhi
-        );
-    }
-
-    outletFlux
-    {
-        $inletFlux;
-        name            outlet;
-    }
-
-    sTransport
-    {
-        type            scalarTransport;
-        libs            (solverFunctionObjects);
-
-        enabled         true;
-        writeControl    writeTime;
-        writeInterval   1;
-
-        field           s;
-        bounded01       false;
-        phase           alpha.water;
-
-        write           true;
-
-        fvOptions
-        {
-            unitySource
-            {
-                type            scalarSemiImplicitSource;
-                enabled         true;
-
-                selectionMode   all;
-                volumeMode      specific;
-
-                sources
-                {
-                    s           (1 0);
-                }
-            }
-        }
-
-        resetOnStartUp  false;
-    }
-}
+maxCo           0.8;
+maxAlphaCo      0.8;
+maxDeltaT       1.0;
 
 // ************************************************************************* //
