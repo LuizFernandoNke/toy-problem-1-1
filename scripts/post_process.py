@@ -2,17 +2,12 @@ import os
 import sys
 import subprocess
 import re
-import math
-import argparse
+import csv
 from pathlib import Path
 
-# Adiciona a raiz ao path do Python
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
-from config.simulation_config import SimulationConfig
-
-# Detecta e prepara a variável do OpenFOAM
 def get_openfoam_env() -> str:
     possible_paths = [
         "/usr/lib/openfoam/openfoam2606/etc/bashrc",
@@ -28,107 +23,85 @@ def get_openfoam_env() -> str:
 OF_ENV = get_openfoam_env()
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Pós-processamento do OpenFOAM")
-    parser.add_argument("-case", type=str, default=None, help="Caminho do caso")
-    parser.add_argument("--pre", action="store_true", help="Validação pré-simulação")
-    return parser.parse_args()
-
-
 def count_mesh_cells(case_dir: Path) -> int:
-    """Extrai a contagem de células via checkMesh após a reconstrução do caso."""
+    """Extrai a contagem total de células da malha via checkMesh."""
     current_env = os.environ.copy()
     cmd = f"{OF_ENV} checkMesh -case {case_dir} -time 0"
     res = subprocess.run(cmd, shell=True, executable="/bin/bash", capture_output=True, text=True, env=current_env)
-    
     match = re.search(r"cells:\s*(\d+)", res.stdout)
-    if match:
-        return int(match.group(1))
-        
-    # Fallback no log.blockMesh
-    log_mesh = case_dir / "log.blockMesh"
-    if log_mesh.exists():
-        content = log_mesh.read_text(encoding="utf-8", errors="ignore")
-        match = re.search(r"Creating cells\s*:\s*total:(\d+)", content)
-        if match:
-            return int(match.group(1))
-
-    return 0
+    return int(match.group(1)) if match else 0
 
 
-def validate_mesh_pre_run(cfg: SimulationConfig, case_dir: Path):
-    """Executa a validação da malha ANTES de iniciar a simulação principal."""
-    n_cells = count_mesh_cells(case_dir)
-    print("\n" + "=" * 60)
-    print(f"PRÉ-VALIDAÇÃO DA MALHA [{case_dir.name}]")
-    print("=" * 60)
-    print(f"Número Total de Células     : {n_cells}")
-    print(f"Resolução da Malha (Nx,Ny,Nz): {cfg.nx} x {cfg.ny} x {cfg.nz}")
-    
-    dh = cfg.diameter
-    velocity = cfg.velocity_inlet
-    rho_water = cfg.water.rho
-    mu_water = cfg.water.rho * cfg.water.nu
+def read_dp_from_postprocessing_files(case_dir: Path) -> float:
+    """Fallback: Lê os arquivos salvos em postProcessing/patchAverage caso o comando via CLI falhe."""
+    post_dir = case_dir / "postProcessing"
+    if not post_dir.exists():
+        return 0.0
 
-    re_water = (rho_water * velocity * dh) / mu_water
-    
-    print(f"Diâmetro Hidráulico (Dh)    : {dh:.4f} m")
-    print(f"Número de Reynolds (Água)   : {re_water:.2f}")
-    if re_water > 4000:
-        print("Regime de Escoamento       : Turbulento")
-    elif re_water < 2300:
-        print("Regime de Escoamento       : Laminar")
-    else:
-        print("Regime de Escoamento       : Transição")
-    print("=" * 60 + "\n")
+    def get_latest_value(patch_name: str) -> float:
+        patch_dirs = list(post_dir.glob(f"*{patch_name}*")) + list(post_dir.glob(f"patchAverage*{patch_name}*"))
+        for pdir in patch_dirs:
+            time_dirs = [d for d in pdir.iterdir() if d.is_dir() and d.name.replace('.', '', 1).isdigit()]
+            if time_dirs:
+                latest = sorted(time_dirs, key=lambda x: float(x.name))[-1]
+                for dat_file in latest.glob("*.dat"):
+                    with open(dat_file, "r", encoding="utf-8", errors="ignore") as f:
+                        lines = [line.strip() for line in f if not line.startswith("#") and line.strip()]
+                        if lines:
+                            last_line = lines[-1].split()
+                            return float(last_line[-1])
+        return 0.0
+
+    p_in = get_latest_value("inlet")
+    p_out = get_latest_value("outlet")
+    return abs(p_in - p_out)
 
 
-def get_wall_yplus(case_dir: Path) -> dict:
-    """Executa o cálculo e captura os dados de y+."""
+def extract_dp_and_yplus(case_dir: Path) -> tuple[float, float]:
+    """Extrai o y+ médio e a diferença de pressão (Delta P) em paralelo usando mpirun -np 10."""
     current_env = os.environ.copy()
+
+    # 1. Extrai o y+ médio no último tempo
+    cmd_yplus = f"{OF_ENV} mpirun -np 10 interFoam -parallel -case {case_dir} -postProcess -func yPlus -latestTime"
+    res_yplus = subprocess.run(cmd_yplus, shell=True, executable="/bin/bash", capture_output=True, text=True, env=current_env)
     
-    # Executa o pós-processamento do yPlus no OpenFOAM
-    cmd_yplus = f"{OF_ENV} interFoam -case {case_dir} -postProcess -func yPlus -latestTime"
-    res = subprocess.run(
-        cmd_yplus, shell=True, executable="/bin/bash", capture_output=True, text=True, env=current_env
-    )
-    
-    output = res.stdout
-    match = re.search(r"patch\s+\w+\s+y\+\s*:\s*min\s*=\s*([\d\.]+),\s*max\s*=\s*([\d\.]+),\s*average\s*=\s*([\d\.]+)", output)
-    if match:
-        return {
-            "min": float(match.group(1)),
-            "max": float(match.group(2)),
-            "avg": float(match.group(3))
-        }
+    matches_y = re.findall(r"average\s*=\s*([\d\.\-eE]+)", res_yplus.stdout)
+    yplus_avg = float(matches_y[-1]) if matches_y else 0.0
 
-    # Fallback: Tenta buscar nos arquivos .dat do postProcess
-    post_dir = case_dir / "postProcess"
-    if post_dir.exists():
-        for dat_file in post_dir.rglob("*.dat"):
-            with open(dat_file, "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    if "wall" in line.lower():
-                        parts = line.split()
-                        try:
-                            return {"min": float(parts[1]), "max": float(parts[2]), "avg": float(parts[3])}
-                        except (IndexError, ValueError):
-                            continue
+    # 2. Extrai a pressão média no inlet e no outlet usando patchAverage
+    cmd_pin = f"{OF_ENV} mpirun -np 10 postProcess -parallel -case {case_dir} -func 'patchAverage(name=inlet, field=p_rgh)' -latestTime"
+    cmd_pout = f"{OF_ENV} mpirun -np 10 postProcess -parallel -case {case_dir} -func 'patchAverage(name=outlet, field=p_rgh)' -latestTime"
 
-    return {"min": 0.0, "max": 0.0, "avg": 0.0}
+    res_pin = subprocess.run(cmd_pin, shell=True, executable="/bin/bash", capture_output=True, text=True, env=current_env)
+    res_pout = subprocess.run(cmd_pout, shell=True, executable="/bin/bash", capture_output=True, text=True, env=current_env)
+
+    p_in_match = re.findall(r"(?:average|areaAverage)\([^)]+\)\s*(?:of\s+\w+\s*)?=\s*([\d\.\-eE]+)", res_pin.stdout)
+    p_out_match = re.findall(r"(?:average|areaAverage)\([^)]+\)\s*(?:of\s+\w+\s*)?=\s*([\d\.\-eE]+)", res_pout.stdout)
+
+    if p_in_match and p_out_match:
+        p_in = float(p_in_match[-1])
+        p_out = float(p_out_match[-1])
+        # Multiplica por 1000 (rho da água) para converter m²/s² -> Pa            
+        rho = 1000.0  
+        delta_p = abs(p_in - p_out) * rho
+    else:
+            delta_p = read_dp_from_postprocessing_files(case_dir) * 1000.0
+
+    return delta_p, yplus_avg
 
 
-def get_performance_metrics(case_dir: Path):
-    """Extrai contagem de núcleos e tempo de execução procurando qualquer log do interFoam."""
+
+def get_performance_metrics(case_dir: Path) -> tuple[str, str]:
+    """Extrai o número de núcleos (processadores) e o tempo final de execução do log."""
     execution_time = "N/A"
     
-    # Procura qualquer log gerado (ex: interFoam.log, interFoam_kEpsilon.log...)
-    log_files = list(case_dir.glob("*.log")) + list(case_dir.glob("log.*"))
+    # Busca arquivos de log do interFoam na raiz do caso
+    log_files = list(case_dir.glob("log.*")) + list(case_dir.glob("*.log"))
     for log_path in log_files:
-        if "interFoam" in log_path.name:
+        if log_path.is_file():
             with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
                 for line in reversed(f.readlines()):
-                    if "ExecutionTime" in line or "ClockTime" in line:
+                    if "ExecutionTime" in line:
                         execution_time = line.strip()
                         break
             if execution_time != "N/A":
@@ -140,61 +113,70 @@ def get_performance_metrics(case_dir: Path):
         with open(decomp_path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
                 if "numberOfSubdomains" in line:
-                    num_cores = line.split()[1].rstrip(';')
+                    num_cores = line.split()[1].rstrip(';').strip()
                     break
 
     return num_cores, execution_time
 
 
+def save_to_csv(row_data: dict):
+    """Salva os dados no CSV sem duplicar modelos."""
+    csv_file = ROOT_DIR / "simulation_metrics.csv"
+    fieldnames = [
+        "Model", "Case_Directory", "Mesh_Cells", "Cores", 
+        "yPlus_Min", "yPlus_Max", "yPlus_Avg", "Delta_P_Pa", "Execution_Time"
+    ]
+    
+    rows = {}
+    if csv_file.exists():
+        with open(csv_file, mode="r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for r in reader:
+                if r.get("Model"):
+                    rows[r["Model"]] = r
+
+    rows[row_data["Model"]] = row_data
+
+    with open(csv_file, mode="w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows.values())
+
+    print(f"[CSV] Métricas atualizadas em: {csv_file}\n")
+
+
 def verify_results(case_dir: Path):
-    """Gera o relatório final de pós-processamento da simulação."""
+    """Executa a verificação e salva o relatório."""
+    delta_p, yplus_avg = extract_dp_and_yplus(case_dir)
+    num_cores, execution_time = get_performance_metrics(case_dir)
+    n_cells = count_mesh_cells(case_dir)
+    model_name = case_dir.name.replace("run_", "")
+
     print("\n" + "=" * 60)
     print(f"RELATÓRIO FINAL DE SIMULAÇÃO - CASO: {case_dir.name}")
     print("=" * 60)
+    print(f"Wall y+ (Média)             : {yplus_avg:.2f}")
+    print(f"Delta P (Entrada - Saída)    : {delta_p:.4f} Pa")
+    print(f"Número de Processadores     : {num_cores}")
+    print(f"Tamanho da Malha            : {n_cells} células")
+    print(f"Tempo de Execução           : {execution_time}")
+    print("=" * 60 + "\n")
 
-    try:
-        # Métricas de y+
-        yplus_data = get_wall_yplus(case_dir)
-        print("MÉTRICAS DE DISTÂNCIA DA PAREDE (y+)")
-        print(f"Wall y+ (Mín / Máx / Média) : {yplus_data['min']:.2f} / {yplus_data['max']:.2f} / {yplus_data['avg']:.2f}")
+    row_data = {
+        "Model": model_name,
+        "Case_Directory": case_dir.name,
+        "Mesh_Cells": n_cells,
+        "Cores": num_cores,
+        "yPlus_Min": "N/A",
+        "yPlus_Max": "N/A",
+        "yPlus_Avg": f"{yplus_avg:.2f}",
+        "Delta_P_Pa": f"{delta_p:.4f}",
+        "Execution_Time": execution_time
+    }
 
-        if yplus_data['avg'] > 0:
-            if yplus_data['avg'] < 1.0:
-                print("Status y+                   : Excelente para resolução da subcamada viscosa (y+ < 1)")
-            elif 30.0 <= yplus_data['avg'] <= 300.0:
-                print("Status y+                   : Adequado para funções de parede padrão (30 < y+ < 300)")
-            else:
-                print("Status y+                   : Na camada limite intermediária (1 < y+ < 30). Ajuste a malha.")
-        else:
-            print("Status y+                   : Não capturado (Verifique se a solução convergiu).")
-
-        print("-" * 60)
-
-        # Desempenho computacional
-        num_cores, execution_time = get_performance_metrics(case_dir)
-        n_cells = count_mesh_cells(case_dir)
-
-        print("DESEMPENHO COMPUTACIONAL")
-        print(f"Núcleos de Processamento     : {num_cores}")
-        print(f"Tamanho Total da Malha       : {n_cells} células")
-        print(f"Tempo de Execução           : {execution_time}")
-        print("=" * 60 + "\n")
-
-    except Exception as err:
-        print(f"Erro no pós-processamento: {err}")
+    save_to_csv(row_data)
 
 
 if __name__ == "__main__":
-    cfg = SimulationConfig()
-    args = parse_args()
-
-    # Define o caso dinamicamente se passado via -case, senão usa template_case
-    if args.case:
-        case_dir = Path(args.case).resolve()
-    else:
-        case_dir = ROOT_DIR / "template_case"
-
-    if args.pre:
-        validate_mesh_pre_run(cfg, case_dir)
-    else:
-        verify_results(case_dir)
+    case_path = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else ROOT_DIR / "runs" / "run_kEpsilon"
+    verify_results(case_path)

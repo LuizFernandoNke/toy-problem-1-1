@@ -148,6 +148,19 @@ def main():
     
     run_step("Processando resultados kEpsilon", [sys.executable, "scripts/post_process.py", "-case", str(RUNS_DIR / "run_kEpsilon")])
     run_step("Processando resultados kOmegaSST", [sys.executable, "scripts/post_process.py", "-case", str(RUNS_DIR / "run_kOmegaSST")])
+
+    # ------------------------------------------------------------------
+    # ETAPA 4: Comparação e Geração de Gráficos
+    # ------------------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("PASSO 4: Gerando Gráficos Comparativos RANS")
+    print("=" * 60)
+
+    run_step("Gerando comparações de gráficos e perfis", [sys.executable, "scripts/compare_rans.py"])
+
+    print("\n" + "=" * 60)
+    print("PIPELINE CFD FINALIZADO COM SUCESSO!")
+    print("=" * 60)
     
 if __name__ == "__main__":
     main()
