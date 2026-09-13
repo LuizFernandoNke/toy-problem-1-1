@@ -9,7 +9,7 @@ from config.simulation_config import SimulationConfig
 def setup_zero_files(cfg: SimulationConfig, case_dir: Path):
     """
     Gera todos os arquivos do diretório 0/ (condições iniciais e de contorno)
-    para a simulação multifásica interFoam.
+    para a simulação multifásica interFoam (com transição suave para Kelvin-Helmholtz).
     """
     zero_dir = case_dir / "0"
     zero_dir.mkdir(parents=True, exist_ok=True)
@@ -152,7 +152,7 @@ boundaryField
 | \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
 |  \\\\    /   O peration     Version:  v2606                                 |
 |   \\\\  /    A nd           Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation                                                 |
+|    \\\\/     M anipulation                                                  |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -165,7 +165,7 @@ FoamFile
 
 dimensions      [0 0 -1 0 0 0 0];
 
-internalField   uniform 10; // Valor estritamente > 0
+internalField   uniform 10;
 
 boundaryField
 {
@@ -198,7 +198,7 @@ boundaryField
 """
     (zero_dir / "omega").write_text(omega_content, encoding="utf-8")
 
-# ?. epsilon (Taxa de Dissipação da Energia Cinética Turbulenta)
+    # 5. epsilon (Taxa de Dissipação da Energia Cinética Turbulenta)
     epsilon_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -245,7 +245,7 @@ boundaryField
 """
     (zero_dir / "epsilon").write_text(epsilon_content, encoding="utf-8")
 
-    # 5. p_rgh (Pressão Hidrostática Modificada)
+    # 6. p_rgh (Pressão Hidrostática Modificada)
     p_rgh_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -291,7 +291,7 @@ boundaryField
 """
     (zero_dir / "p_rgh").write_text(p_rgh_content, encoding="utf-8")
 
-    # 6. U (Campo de Velocidades)
+    # 7. U (Campo de Velocidades com Transição Suave via tanh)
     u_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -310,14 +310,32 @@ FoamFile
 
 dimensions      [0 1 -1 0 0 0 0];
 
-internalField   uniform ({getattr(cfg, 'initial_velocity_x', 0.0)} 0 0);
+internalField   uniform (0 0 {getattr(cfg, 'initial_velocity_x', 1e-6)});
 
 boundaryField
 {{
     inlet
     {{
-        type            fixedValue;
-        value           uniform (0 0 {cfg.velocity_inlet});
+        type            codedFixedValue;
+        value           uniform (0 0 0);
+        name            velocityProfileKH;
+
+        code
+        #{'{'}
+            const vectorField& Cf = patch().Cf();
+            vectorField& Upatch = *this;
+
+            const scalar U_water = {cfg.velocity_water};
+            const scalar U_oil = {cfg.velocity_oil};
+
+            forAll(Cf, i)
+            {{
+                scalar y = Cf[i].y();
+                // Transição suave em uma camada limite de 2mm ao redor da interface (y = 0)
+                scalar blend = 0.5 * (1.0 + std::tanh(y / 0.002));
+                Upatch[i] = vector(0, 0, U_water * (1.0 - blend) + U_oil * blend);
+            }}
+        #{'}'};
     }}
 
     walls
@@ -339,7 +357,6 @@ boundaryField
 
 def main():
     config = SimulationConfig()
-    # Aponta exatamente para a pasta utilizada no run_pipeline.py
     target_case = Path(__file__).resolve().parent.parent / "template_case"
     setup_zero_files(config, target_case)
     print("Arquivos do diretório '0/' gerados com sucesso")
