@@ -1,9 +1,9 @@
 /*--------------------------------*- C++ -*----------------------------------*\
-| =========                                                                 |
+| =========                                                                |
 | \\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     Version:  v2606                                 |
-|   \\  /    A nd           Website:  www.openfoam.com                      |
-|    \\/     M anipulation                                                  |
+|  \\    /   O peration     Version:  v2606                                |
+|   \\  /    A nd           Website:  www.openfoam.com                     |
+|    \\/     M anipulation                                                 |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -21,7 +21,6 @@ setFormat       raw;
 
 sets
 (
-    // Perfil de velocidade transversal
     profile_mid
     {
         type            uniform;
@@ -30,14 +29,14 @@ sets
         end             (0 0.02375 1.75);
         nPoints         100;
     }
-    // Linha central para calcular Delta P ao longo de Z
+
     center_line
     {
         type            uniform;
         axis            z;
-        start           (0 0 0.02);
-        end             (0 0 1.98);
-        nPoints         200;
+        start           (0 0 1.2);
+        end             (0 0 1.9);
+        nPoints         100;
     }
 );
 

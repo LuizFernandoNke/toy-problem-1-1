@@ -1,9 +1,9 @@
 /*--------------------------------*- C++ -*----------------------------------*\
-| =========                                                                 |
+| =========                                                                |
 | \\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     Version:  v2606                                 |
-|   \\  /    A nd           Website:  www.openfoam.com                      |
-|    \\/     M anipulation                                                  |
+|  \\    /   O peration     Version:  v2606                                |
+|   \\  /    A nd           Website:  www.openfoam.com                     |
+|    \\/     M anipulation                                                 |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -29,7 +29,7 @@ divSchemes
     default                         none;
     
     // Campo de velocidade/momento
-    "div\(.*phi.*,U\)"                      Gauss linearUpwind grad(U);
+    "div\(.*phi.*,U\)"                      Gauss upwind;
     
     // Multifase (VOF / alpha)
     "div\(phi,alpha.*\)"                    Gauss vanLeer;

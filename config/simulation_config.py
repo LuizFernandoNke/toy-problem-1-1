@@ -11,19 +11,19 @@ class SimulationConfig(BaseModel):
     # Controle de Tempo e Estabilidade Numérica
     end_time: float = Field(default=10.0, gt=0, description="Tempo final de simulação em segundos")
     delta_t: float = Field(default=0.1, gt=0, description="Passo de tempo inicial em segundos")
-    max_co: float = Field(default=0.8, gt=0, le=1.0, description="Número de Courant máximo (maxCo)")
-    max_alpha_co: float = Field(default=0.8, gt=0, le=1.0, description="Courant máximo da interface (maxAlphaCo)")
+    max_co: float = Field(default=1, gt=0, le=1.0, description="Número de Courant máximo (maxCo)")
+    max_alpha_co: float = Field(default=1, gt=0, le=1.0, description="Courant máximo da interface (maxAlphaCo)")
     max_delta_t: float = Field(default=1.0, gt=0, description="Passo de tempo máximo permitido em segundos")
-    write_interval: int = Field(default=10, gt=0, description="Frequência de gravação de passos de tempo")
+    write_interval: float = Field(default=1, gt=0, description="Frequência de gravação de passos de tempo")
     
     # Geometria do duto
     diameter: float = Field(default=0.05, gt=0, description="Diâmetro em metros")
     length: float = Field(default=2.0, gt=0, description="Comprimento em metros")
     
     # Condições do escoamento
-    velocity_inlet: float = Field(default=0.5, gt=0, description="Velocidade de entrada em m/s")
-    initial_velocity_x: float = Field(default=0.0, ge=0, description="Velocidade inicial em X")
-    inlet_alpha_water: float = Field(default=0.5, ge=0.0, le=1.0, description="Fração de água na entrada")
+    velocity_inlet: float = Field(default=0.3, gt=0, description="Velocidade de entrada em m/s")
+    initial_velocity_x: float = Field(default=1e-6, ge=0, description="Velocidade inicial em X")
+    inlet_alpha_water: float = Field(default=0.7, ge=0.0, le=1.0, description="Fração de água na entrada")
 
     # Modelo de Turbulencia (ex: kEpsilon, kOmegaSST, laminar)
     turbulence_model: str = Field(default="kOmegaSST", description="Modelo RAS de turbulência")
@@ -36,7 +36,7 @@ class SimulationConfig(BaseModel):
     sigma: float = Field(default=0.03, ge=0, description="Tensão superficial N/m")
 
     # Malha e Paralelismo
-    mesh_factor: float = 2
+    mesh_factor: float = 1.414
     num_processors: int = 10
 
     # Atalhos/retrocompatibilidade para manter propriedades antigas funcionando

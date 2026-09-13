@@ -6,7 +6,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from config.simulation_config import SimulationConfig
 
-def setup_constant_files(cfg: SimulationConfig, case_dir: Path):
+def setup_constant_files(cfg: SimulationConfig, case_dir: Path, model_name: str = None):
     """
     Gera todos os arquivos da pasta 'constant' (fluidos, turbulência e gravidade)
     utilizando f-strings puras do Python.
@@ -14,15 +14,18 @@ def setup_constant_files(cfg: SimulationConfig, case_dir: Path):
     constant_dir = case_dir / "constant"
     constant_dir.mkdir(parents=True, exist_ok=True)
 
+    # Usa o modelo passado explicitamente ou cai no padrão do cfg
+    active_model = model_name if model_name else cfg.turbulence_model
+
     # -------------------------------------------------------------------------
     # 1. Configurar Aceleração da Gravidade (constant/g)
     # -------------------------------------------------------------------------
     g_props = f"""/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                 |                                                 |
-| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2606                                 |
-|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation  |                                                 |
+| =========                                                                |
+| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     Version:  v2606                                |
+|   \\\\  /    A nd           Website:  www.openfoam.com                      |
+|    \\\\/     M anipulation                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {{
@@ -48,11 +51,11 @@ value           (0 -9.81 0);
     sigma_val = getattr(cfg, 'sigma', getattr(cfg, 'surface_tension', 0.03))
 
     transport_props = f"""/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                 |                                                 |
-| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2606                                 |
-|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation  |                                                 |
+| =========                                                                |
+| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     Version:  v2606                                |
+|   \\\\  /    A nd           Website:  www.openfoam.com                      |
+|    \\\\/     M anipulation                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {{
@@ -92,11 +95,11 @@ sigma           {sigma_val};
     # 3. Configurar Modelo de Turbulência (constant/turbulenceProperties)
     # -------------------------------------------------------------------------
     turb_props = f"""/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                 |                                                 |
-| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2606                                 |
-|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation  |                                                 |
+| =========                                                                |
+| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     Version:  v2606                                |
+|   \\\\  /    A nd           Website:  www.openfoam.com                      |
+|    \\\\/     M anipulation                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {{
@@ -112,7 +115,7 @@ simulationType      RAS;
 
 RAS
 {{
-    RASModel        {cfg.turbulence_model};
+    RASModel        {active_model};
 
     turbulence      on;
 
@@ -130,6 +133,15 @@ RAS
 
 if __name__ == "__main__":
     config = SimulationConfig()
-    target_case = Path(__file__).resolve().parent.parent / "template_case"
-    setup_constant_files(config, target_case)
-    print("Arquivos do diretório 'constant/' gerados com sucesso!")
+    base_runs = Path(__file__).resolve().parent.parent / "runs"
+    
+    # Mapeia cada pasta para seu respectivo modelo RANS
+    cases_models = {
+        "run_kEpsilon": "kEpsilon",
+        "run_kOmegaSST": "kOmegaSST"
+    }
+    
+    for case_name, model in cases_models.items():
+        case_path = base_runs / case_name
+        setup_constant_files(config, case_path, model_name=model)
+        print(f"Arquivos do diretório '{case_name}/constant/' gerados com sucesso para {model}!")

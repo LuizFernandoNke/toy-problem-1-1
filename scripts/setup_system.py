@@ -17,11 +17,11 @@ def setup_system_files(cfg: SimulationConfig, case_dir: Path):
     # 1. fvSchemes (Compatível com kEpsilon e kOmegaSST)
     # -------------------------------------------------------------------------
     fv_schemes = r"""/*--------------------------------*- C++ -*----------------------------------*\
-| =========                                                                 |
+| =========                                                                |
 | \\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     Version:  v2606                                 |
-|   \\  /    A nd           Website:  www.openfoam.com                      |
-|    \\/     M anipulation                                                  |
+|  \\    /   O peration     Version:  v2606                                |
+|   \\  /    A nd           Website:  www.openfoam.com                     |
+|    \\/     M anipulation                                                 |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -47,7 +47,7 @@ divSchemes
     default                         none;
     
     // Campo de velocidade/momento
-    "div\(.*phi.*,U\)"                      Gauss linearUpwind grad(U);
+    "div\(.*phi.*,U\)"                      Gauss upwind;
     
     // Multifase (VOF / alpha)
     "div\(phi,alpha.*\)"                    Gauss vanLeer;
@@ -89,14 +89,14 @@ wallDist
     (system_dir / "fvSchemes").write_text(fv_schemes, encoding="utf-8")
 
     # -------------------------------------------------------------------------
-    # 2. fvSolution (Solucoes de Matriz atualizadas com pcorr)
+    # 2. fvSolution (Solucoes Estaveis com smoothSolver para Turbulencia)
     # -------------------------------------------------------------------------
     fv_solution = """/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                                                                 |
+| =========                                                                |
 | \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     Version:  v2606                                 |
-|   \\\\  /    A nd           Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation                                                  |
+|  \\\\    /   O peration     Version:  v2606                                |
+|   \\\\  /    A nd           Website:  www.openfoam.com                     |
+|    \\\\/     M anipulation                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -112,7 +112,7 @@ solvers
     "alpha.water.*"
     {
         nAlphaCorr      2;
-        nAlphaSubCycles 1;
+        nAlphaSubCycles 2;
         cAlpha          1;
     }
 
@@ -132,11 +132,20 @@ solvers
         smoother        GaussSeidel;
     }
 
-    "(U|k|epsilon|omega|B|nuTilda).*"
+    "U.*"
     {
         solver          PBiCGStab;
         preconditioner  DILU;
         tolerance       1e-08;
+        relTol          0.1;
+    }
+
+    "(k|epsilon|omega|B|nuTilda).*"
+    {
+        solver          smoothSolver;
+        smoother        GaussSeidel;
+        nSweeps         1;
+        tolerance       1e-06;
         relTol          0.1;
     }
 }
@@ -144,11 +153,11 @@ solvers
 PIMPLE
 {
     momentumPredictor   yes;
-    nCorrectors         2;
-    nNonOrthogonalCorrectors 0;
+    nOuterCorrectors            3;
+    nCorrectors         3;
+    nNonOrthogonalCorrectors 2;
 }
 
-// Limites numéricos para prevenir estouros em modelos k-omega SST
 relaxationFactors
 {
     equations
@@ -163,15 +172,15 @@ relaxationFactors
     # -------------------------------------------------------------------------
     # 3. controlDict
     # -------------------------------------------------------------------------
-    end_time = getattr(cfg, 'end_time', 10)
-    delta_t = getattr(cfg, 'delta_t', 0.1)
+    """end_time = getattr(cfg, 'end_time', 10)
+    delta_t = getattr(cfg, 'delta_t', 0.1)"""
 
     control_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                                                                 |
+| =========                                                                |
 | \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     Version:  v2606                                 |
-|   \\\\  /    A nd           Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation                                                  |
+|  \\\\    /   O peration     Version:  v2606                                |
+|   \\\\  /    A nd           Website:  www.openfoam.com                     |
+|    \\\\/     M anipulation                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {{
@@ -188,7 +197,7 @@ startTime       0;
 stopAt          endTime;
 endTime         {cfg.end_time};
 deltaT          {cfg.delta_t};
-writeControl    timeStep;
+writeControl    runTime;
 writeInterval   {cfg.write_interval};
 purgeWrite      0;
 writeFormat     ascii;
@@ -207,23 +216,22 @@ maxDeltaT       {cfg.max_delta_t};
     (system_dir / "controlDict").write_text(control_dict, encoding="utf-8")
 
     # -------------------------------------------------------------------------
-    # 4. sampleDict (Amostragem para Delta P e Perfil de Velocidade)
+    # 4. sampleDict
     # -------------------------------------------------------------------------
     R = getattr(cfg, 'diameter', 0.05) / 2.0
     L = getattr(cfg, 'length', 2.0)
     
     y_min, y_max = -R, R
-    z_sample = L * 0.875  # 1.75 m para L = 2.0 m
+    z_sample = L * 0.875 
     
-    # Trecho isolado plenamente desenvolvido (50% a 90% do duto)
-    z_start_dev = L * 0.50
-    z_end_dev = L * 0.90
+    z_start_dev = L * 0.6
+    z_end_dev = L * 0.95
     
     sample_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                                                                |
 | \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
 |  \\\\    /   O peration     Version:  v2606                                |
-|   \\\\  /    A nd           Website:  www.openfoam.com                      |
+|   \\\\  /    A nd           Website:  www.openfoam.com                     |
 |    \\\\/     M anipulation                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
@@ -242,7 +250,6 @@ setFormat       raw;
 
 sets
 (
-    // Perfil de velocidade transversal
     profile_mid
     {{
         type            uniform;
@@ -252,7 +259,6 @@ sets
         nPoints         100;
     }}
 
-    // Linha central focada estritamente no trecho plenamente desenvolvido
     center_line
     {{
         type            uniform;
@@ -274,14 +280,14 @@ fields
     (system_dir / "sampleDict").write_text(sample_dict, encoding="utf-8")
 
     # -------------------------------------------------------------------------
-    # 5. decomposeParDict (Configuração de Decomposição Paralela)
+    # 5. decomposeParDict
     # -------------------------------------------------------------------------
     decompose_par_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                                                                  |
+| =========                                                                |
 | \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
 |  \\\\    /   O peration     Version:  v2606                                |
-|   \\\\  /    A nd           Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation                                                   |
+|   \\\\  /    A nd           Website:  www.openfoam.com                     |
+|    \\\\/     M anipulation                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {{
