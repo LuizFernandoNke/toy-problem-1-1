@@ -86,10 +86,16 @@ def main():
     for case in cases_models.keys():
         case_path = (BASE_DIR / "runs" / case).resolve()
         
+        # Gera a malha física no diretório atual do caso a partir do system/blockMeshDict
+        run_cmd(f"{FOAM_ENV} && cd {case_path} && blockMesh > log.blockMesh 2>&1", f"Gerando malha blockMesh [{case}]")
+
+        # Decompõe a malha gerada para os núcleos
         run_cmd(f"{FOAM_ENV} && cd {case_path} && decomposePar -force > log.decomposePar 2>&1", f"Decompondo {case}")
-        run_cmd(f"{FOAM_ENV} && cd {case_path} && mpirun -np 10 interFoam -parallel > log.interFoam 2>&1", f"Simulando interFoam {case}")
         
-        # Recontrói explicitamente no tempo de término do SimulationConfig
+        # Executa a simulação em paralelo
+        run_cmd(f"{FOAM_ENV} && cd {case_path} && mpirun -np {cfg.num_processors} interFoam -parallel > log.interFoam 2>&1", f"Simulando interFoam {case}")
+        
+        # Recontrói os resultados
         run_cmd(f"{FOAM_ENV} && cd {case_path} && reconstructPar > log.reconstructPar 2>&1", f"Reconstruindo todos os tempos [{case}]")
 
     # [3/4] Pós-Processamento OpenFOAM
