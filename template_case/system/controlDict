@@ -30,8 +30,8 @@ timeFormat      general;
 timePrecision   6;
 runTimeModifiable true;
 adjustTimeStep  yes;
-maxCo           0.25;
-maxAlphaCo      0.25;
+maxCo           1;
+maxAlphaCo      0.5;
 maxDeltaT       0.01;
 
 // ************************************************************************* //
