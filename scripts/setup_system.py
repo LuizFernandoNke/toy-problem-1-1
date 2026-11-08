@@ -8,13 +8,13 @@ from config.simulation_config import SimulationConfig
 
 def setup_system_files(cfg: SimulationConfig, case_dir: Path):
     """
-    Gera todos os arquivos do diretório 'system' (controlDict, fvSchemes, fvSolution, sampleDict e decomposeParDict).
+    Gera todos os arquivos do diretório 'system' (controlDict, fvSchemes, fvSolution, sampleDict, decomposeParDict e fvOptions).
     """
     system_dir = case_dir / "system"
     system_dir.mkdir(parents=True, exist_ok=True)
 
     # -------------------------------------------------------------------------
-    # 1. fvSchemes (Compatível com kEpsilon e kOmegaSST)
+    # 1. fvSchemes (Ajustado para preservar a onda de Kelvin-Helmholtz)
     # -------------------------------------------------------------------------
     fv_schemes = r"""/*--------------------------------*- C++ -*----------------------------------*\
 | =========                                                                |
@@ -46,14 +46,15 @@ divSchemes
 {
     default                         none;
     
-    // Campo de velocidade/momento
-    "div\(.*phi.*,U\)"                      Gauss upwind;
+    // Campo de velocidade/momento (limitedLinear evita a difusao excessiva do upwind)
+    "div\(.*phi.*,U\)"                      Gauss limitedLinear 1;
     
     // Multifase (VOF / alpha)
     "div\(phi,alpha.*\)"                    Gauss vanLeer;
+    "div\(phir,alpha.*\)"                   Gauss linear;
     "div\(phirb,alpha.*\)"                  Gauss linear;
     
-    // Campos de Turbulencia RANS (k, epsilon, omega, nut)
+    // Campos de Turbulencia RANS (Mantidos em upwind para estabilidade)
     "div\(.*phi.*,(k|epsilon|omega|nut)\)"  Gauss upwind;
     
     // Tensores de viscosidade e termos difusivos
@@ -89,7 +90,7 @@ wallDist
     (system_dir / "fvSchemes").write_text(fv_schemes, encoding="utf-8")
 
     # -------------------------------------------------------------------------
-    # 2. fvSolution (Solucoes Estaveis com smoothSolver para Turbulencia)
+    # 2. fvSolution (Otimizado para PIMPLE e tolerância estrita de p_rghFinal)
     # -------------------------------------------------------------------------
     fv_solution = """/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                                                                |
@@ -111,8 +112,8 @@ solvers
 {
     "alpha.water.*"
     {
-        nAlphaCorr      4;
-        nAlphaSubCycles 4;
+        nAlphaCorr      2;
+        nAlphaSubCycles 2;
         cAlpha          1;
     }
 
@@ -124,12 +125,18 @@ solvers
         relTol          0;
     }
 
-    "(p_rgh|p_rghFinal)"
+    p_rgh
     {
         solver          GAMG;
-        tolerance       1e-07;
-        relTol          0.01;
+        tolerance       1e-06;
+        relTol          0.05;
         smoother        GaussSeidel;
+    }
+
+    p_rghFinal
+    {
+        $p_rgh;
+        relTol          0;
     }
 
     "U.*"
@@ -153,16 +160,19 @@ solvers
 PIMPLE
 {
     momentumPredictor   yes;
-    nOuterCorrectors            4;
-    nCorrectors         3;
-    nNonOrthogonalCorrectors 2;
+    nOuterCorrectors    2;
+    nCorrectors         2;
+    nNonOrthogonalCorrectors 0;
 }
 
 relaxationFactors
 {
     equations
     {
-        ".*" 1;
+        "U.*"           1.0;
+        "k.*"           1.0;
+        "omega.*"       1.0;
+        "alpha.water.*" 1.0;
     }
 }
 // ************************************************************************* //
@@ -172,9 +182,6 @@ relaxationFactors
     # -------------------------------------------------------------------------
     # 3. controlDict
     # -------------------------------------------------------------------------
-    """end_time = getattr(cfg, 'end_time', 10)
-    delta_t = getattr(cfg, 'delta_t', 0.1)"""
-
     control_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                                                                |
 | \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
@@ -305,7 +312,38 @@ method          scotch;
 """
     (system_dir / "decomposeParDict").write_text(decompose_par_dict, encoding="utf-8")
 
-    print("Arquivos do diretório 'system/' (incluindo decomposeParDict) gerados com sucesso.")
+    # -------------------------------------------------------------------------
+    # 6. fvOptions (Limitador de Viscosidade Turbulenta para RANS)
+    # -------------------------------------------------------------------------
+    fv_options = """/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                                                                |
+| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     Version:  v2606                                |
+|   \\\\  /    A nd           Website:  www.openfoam.com                     |
+|    \\\\/     M anipulation                                                 |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvOptions;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+limitNut
+{
+    type            limitTurbulenceViscosity;
+    active          true;
+    selectionMode   all;    // <--- ADICIONADO AQUI
+    max             1e-3;
+}
+
+// ************************************************************************* //
+"""
+    (system_dir / "fvOptions").write_text(fv_options, encoding="utf-8")
+
+    print("Arquivos do diretório 'system/' (incluindo fvOptions) gerados com sucesso.")
 
 if __name__ == "__main__":
     config = SimulationConfig()

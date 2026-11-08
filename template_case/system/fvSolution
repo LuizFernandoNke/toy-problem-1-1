@@ -18,8 +18,8 @@ solvers
 {
     "alpha.water.*"
     {
-        nAlphaCorr      4;
-        nAlphaSubCycles 4;
+        nAlphaCorr      2;
+        nAlphaSubCycles 2;
         cAlpha          1;
     }
 
@@ -31,12 +31,18 @@ solvers
         relTol          0;
     }
 
-    "(p_rgh|p_rghFinal)"
+    p_rgh
     {
         solver          GAMG;
-        tolerance       1e-07;
-        relTol          0.01;
+        tolerance       1e-06;
+        relTol          0.05;
         smoother        GaussSeidel;
+    }
+
+    p_rghFinal
+    {
+        $p_rgh;
+        relTol          0;
     }
 
     "U.*"
@@ -60,16 +66,19 @@ solvers
 PIMPLE
 {
     momentumPredictor   yes;
-    nOuterCorrectors            4;
-    nCorrectors         3;
-    nNonOrthogonalCorrectors 2;
+    nOuterCorrectors    2;
+    nCorrectors         2;
+    nNonOrthogonalCorrectors 0;
 }
 
 relaxationFactors
 {
     equations
     {
-        ".*" 1;
+        "U.*"           1.0;
+        "k.*"           1.0;
+        "omega.*"       1.0;
+        "alpha.water.*" 1.0;
     }
 }
 // ************************************************************************* //

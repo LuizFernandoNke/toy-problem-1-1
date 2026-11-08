@@ -1,3 +1,2 @@
-Model,Case_Directory,Mesh_Cells,Cores,yPlus_Min,yPlus_Max,yPlus_Avg,Delta_P_Pa,Delta_P_Blasius_Pa,Error_Rel_Pct,Execution_Time_s
-kEpsilon,run_kEpsilon,40000,10,2.74,38.75,13.26,58.4625,131.1035,55.41,509.97
-kOmegaSST,run_kOmegaSST,40000,10,1.71,38.73,12.27,41.3673,131.1035,68.45,589.41
+Model,Case_Directory,Re_Mix,Darcy_f,L_Sample_m,Delta_P_Theory_Pa,Delta_P_Simulated_Pa,Error_Rel_Pct,yPlus_Min,yPlus_Max,yPlus_Avg,yPlus_Status,Mesh_Cells,Cores,Execution_Time_s
+kOmegaSST,run_kOmegaSST,6676.67,0.03462,0.7,112.117,1238.907,1005.01,0.18,9.86,1.79,Buffer layer (1 < y+ < 30),90000,10,4705.24

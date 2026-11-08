@@ -28,14 +28,15 @@ divSchemes
 {
     default                         none;
     
-    // Campo de velocidade/momento
-    "div\(.*phi.*,U\)"                      Gauss upwind;
+    // Campo de velocidade/momento (limitedLinear evita a difusao excessiva do upwind)
+    "div\(.*phi.*,U\)"                      Gauss limitedLinear 1;
     
     // Multifase (VOF / alpha)
     "div\(phi,alpha.*\)"                    Gauss vanLeer;
+    "div\(phir,alpha.*\)"                   Gauss linear;
     "div\(phirb,alpha.*\)"                  Gauss linear;
     
-    // Campos de Turbulencia RANS (k, epsilon, omega, nut)
+    // Campos de Turbulencia RANS (Mantidos em upwind para estabilidade)
     "div\(.*phi.*,(k|epsilon|omega|nut)\)"  Gauss upwind;
     
     // Tensores de viscosidade e termos difusivos

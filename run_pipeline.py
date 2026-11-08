@@ -29,7 +29,7 @@ def main():
     FOAM_ENV = "source /usr/lib/openfoam/openfoam2606/etc/bashrc"
     cfg = SimulationConfig()
     cases_models = {
-        "run_kEpsilon": "kEpsilon",
+       # "run_kEpsilon": "kEpsilon",
         "run_kOmegaSST": "kOmegaSST"
     }
 
