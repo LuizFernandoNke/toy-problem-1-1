@@ -21,12 +21,12 @@ class SimulationConfig(BaseModel):
     length: float = Field(default=2.0, gt=0, description="Comprimento em metros")
     
     # Condições de Entrada - Kelvin-Helmholtz (Cisalhamento Elevado ΔU = 1.0 m/s)
-    velocity_water: float = Field(default=0.1, gt=0, description="Velocidade da fase água (fundo) em m/s")
-    velocity_oil: float = Field(default=0.3, gt=0, description="Velocidade da fase óleo (topo) em m/s")
+    velocity_water: float = Field(default=0.6, gt=0, description="Velocidade da fase água (fundo) em m/s")
+    velocity_oil: float = Field(default=1.30, gt=0, description="Velocidade da fase óleo (topo) em m/s")
     velocity_inlet: float = Field(default=0.70, gt=0, description="Velocidade média equivalente de entrada em m/s")
     
     initial_velocity_x: float = Field(default=1e-6, ge=0, description="Velocidade inicial em X")
-    inlet_alpha_water: float = Field(default=0.5, ge=0.0, le=1.0, description="Fração de água na entrada (interface no meio)")
+    inlet_alpha_water: float =Field(default=0.75, ge=0.0, le=1.0, description="Fração de água na entrada (interface no meio)")
 
     # Modelo de Turbulência
     turbulence_model: str = Field(default="kOmegaSST", description="Modelo RAS de turbulência")

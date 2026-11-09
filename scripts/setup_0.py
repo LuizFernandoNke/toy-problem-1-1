@@ -8,21 +8,28 @@ from config.simulation_config import SimulationConfig
 
 def setup_zero_files(cfg: SimulationConfig, case_dir: Path):
     """
-    Gera todos os arquivos do diretório 0/ e o setFieldsDict em system/
-    para escoamento estratificado com instabilidade de Kelvin-Helmholtz.
+    Gera todos os ficheiros do diretório 0/ e o setFieldsDict em system/
+    para escoamento estratificado ÓLEO-ÁGUA com instabilidade de Kelvin-Helmholtz.
     """
     zero_dir = case_dir / "0"
     zero_dir.mkdir(parents=True, exist_ok=True)
     system_dir = case_dir / "system"
     system_dir.mkdir(parents=True, exist_ok=True)
 
-    # Velocidades de referência para o cisalhamento (Ar vs Água)
-    u_water = getattr(cfg, 'u_water', 0.5)   # m/s (Água mais lenta)
-    u_air = getattr(cfg, 'u_air', 5.0)       # m/s (Ar mais rápido)
-    u_avg = (u_air + u_water) / 2.0
-    du = u_air - u_water
+    # 1. Leitura correta das variáveis definidas no simulation_config.py
+    u_water = cfg.velocity_water  # m/s (Água no fundo)
+    u_oil = cfg.velocity_oil      # m/s (Óleo no topo)
+    u_avg = (u_oil + u_water) / 2.0
+    du = u_oil - u_water
 
-    # 1. alpha.water (Fração de fase)
+    R = cfg.diameter / 2.0
+    L = cfg.length
+    
+    # Altura base da interface a partir de inlet_alpha_water (0.5 = centro y=0)
+    alpha_target = getattr(cfg, 'inlet_alpha_water', 0.5)
+    y_base = 0.0 if alpha_target == 0.5 else R * (2.0 * alpha_target - 1.0)
+
+    # --- 1. alpha.water ---
     alpha_water_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -41,7 +48,7 @@ FoamFile
 
 dimensions      [0 0 0 0 0 0 0];
 
-internalField   uniform 0; // Preenchido pelo setFields depois
+internalField   uniform 0;
 
 boundaryField
 {{
@@ -55,11 +62,19 @@ boundaryField
         #{{
             const vectorField& C = patch().Cf();
             scalarField& alpha = *this;
+            const scalar t = db().time().value();
+
+            const scalar R = {R:.6f};
+            const scalar y0 = {y_base:.6f};
+            // Amplitude ajustada para perturbação entre dois líquidos
+            const scalar amplitude = 0.3 * R;
+            const scalar freq = 1.; // Hz
+
+            const scalar y_interface = y0 + amplitude * std::sin(2.0 * M_PI * freq * t);
 
             forAll(C, i)
             {{
-                // Água na metade inferior (y < 0)
-                alpha[i] = (C[i].y() <= 0.0) ? 1.0 : 0.0;
+                alpha[i] = (C[i].y() <= y_interface) ? 1.0 : 0.0;
             }}
         #}};
     }}
@@ -79,7 +94,7 @@ boundaryField
 """
     (zero_dir / "alpha.water").write_text(alpha_water_content, encoding="utf-8")
 
-    # 2. U (Campo de Velocidades com Cisalhamento tanh entre Fases)
+    # --- 2. U (Campo de Velocidades com Cisalhamento tanh) ---
     u_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -112,6 +127,7 @@ boundaryField
         #{{
             const scalar Uavg = {u_avg:.6f};
             const scalar dU = {du:.6f};
+            const scalar y0 = {y_base:.6f};
             const scalar delta = 0.002; // Espessura da camada de transição (2mm)
 
             const vectorField& C = patch().Cf();
@@ -120,8 +136,7 @@ boundaryField
             forAll(C, i)
             {{
                 scalar y = C[i].y();
-                // Perfil em tanh: Água lenta embaixo, Ar rápido em cima
-                scalar uz = Uavg + 0.5 * dU * std::tanh(y / delta);
+                scalar uz = Uavg + 0.5 * dU * std::tanh((y - y0) / delta);
                 U[i] = vector(0, 0, uz);
             }}
         #}};
@@ -142,7 +157,7 @@ boundaryField
 """
     (zero_dir / "U").write_text(u_content, encoding="utf-8")
 
-    # 3. k (Energia Cinética Turbulenta Baixa)
+    # --- 3. k ---
     k_content = """/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -187,13 +202,13 @@ boundaryField
 """
     (zero_dir / "k").write_text(k_content, encoding="utf-8")
 
-    # 4. omega (Taxa de Dissipação Específica)
+    # --- 4. omega ---
     omega_content = """/*--------------------------------*- C++ -*----------------------------------*\\
-| =========                                                                 |
-| \\\\      /  F ield         OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     Version:  v2606                                 |
-|   \\\\  /    A nd           Website:  www.openfoam.com                      |
-|    \\\\/     M anipulation                                                  |
+| =========                 |                                                 |
+| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     | Version:  v2606                                 |
+|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\\\/     M anipulation  |                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -232,7 +247,7 @@ boundaryField
 """
     (zero_dir / "omega").write_text(omega_content, encoding="utf-8")
 
-    # 5. nut (Viscosidade Turbulenta)
+    # --- 5. nut ---
     nut_content = """/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -272,7 +287,7 @@ boundaryField
 """
     (zero_dir / "nut").write_text(nut_content, encoding="utf-8")
 
-    # 6. p_rgh (Pressão Hidrostática Modificada)
+    # --- 6. p_rgh ---
     p_rgh_content = """/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -318,9 +333,7 @@ boundaryField
 """
     (zero_dir / "p_rgh").write_text(p_rgh_content, encoding="utf-8")
 
-    # 7. Criar system/setFieldsDict para preencher a água e aplicar a onda no instante t=0
-    R = cfg.diameter / 2.0
-    L = cfg.length
+    # --- 7. setFieldsDict ---
     set_fields_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -344,10 +357,9 @@ defaultFieldValues
 
 regions
 (
-    // Preenche a metade inferior com água (y <= 0)
     boxToCell
     {{
-        box ({-R*1.1} {-R*1.1} -0.1) ({R*1.1} 0.0 {L*1.1});
+        box ({-R*1.1} {-R*1.1} -0.1) ({R*1.1} {y_base} {L*1.1});
         fieldValues
         (
             volScalarFieldValue alpha.water 1
