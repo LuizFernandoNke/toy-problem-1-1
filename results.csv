@@ -1,2 +1,2 @@
-Model,Case_Directory,Re_Mix,Darcy_f,L_Sample_m,Delta_P_Theory_Pa,Delta_P_Simulated_Pa,Error_Rel_Pct,yPlus_Min,yPlus_Max,yPlus_Avg,yPlus_Status,Mesh_Cells,Cores,Execution_Time_s
-kOmegaSST,run_kOmegaSST,102484.51,0.01773,0.7,1821.1698,0.0,100.0,1.23,14.96,7.32,Buffer layer (1 < y+ < 30),90000,10,12552.1
+Model,z_Start_m,z_End_m,L_Sample_m,Time_Samples_Used,Grad_P_Exp_Pa_m,Grad_P_Martinelli_Pa_m,Grad_P_CFD_Pa_m,Error_CFD_vs_Exp_Pct,Error_CFD_vs_LM_Pct,Holdup_Exp,Holdup_Martinelli,Holdup_CFD,Error_Holdup_vs_Exp_Pct,LM_Parameter_X,LM_Chisholm_C,LM_PhiG2,yPlus_Min,yPlus_Max,yPlus_Avg,yPlus_Status,Mesh_Cells,Cores,Execution_Time_s,Timestamp
+kOmegaSST,1.1,1.7,0.6,15,14.8332,49.34,130.4561,779.49,164.4,0.08,0.13,0.1043,30.39,0.3638,12,5.4983,1.23,14.96,7.32,Buffer layer (1 < y+ < 30),90000,10,12552.1,2026-11-19 09:33:31
