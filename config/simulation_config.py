@@ -1,52 +1,91 @@
 import math
+from typing import ClassVar
 from pydantic import BaseModel, Field
+
 
 class FluidProps(BaseModel):
     rho: float = Field(..., gt=0, description="Densidade em kg/m3")
     nu: float = Field(..., gt=0, description="Viscosidade cinemática em m2/s")
 
-class SimulationConfig(BaseModel):
-    case_name: str = "PipeFlow_Water_Oil_KH"
 
-    # Controle de Tempo e Estabilidade Numérica (Ajustados para KH)
-    end_time: float = Field(default=4.5, gt=0, description="Tempo final de simulação em segundos")
+class SimulationConfig(BaseModel):
+    case_name: str = "PipeFlow_Oil_Gas_Stratified"
+
+    # Controle de Tempo e Estabilidade Numérica
+    end_time: float = Field(default=8, gt=0, description="Tempo final de simulação em segundos")
     delta_t: float = Field(default=1e-5, gt=0, description="Passo de tempo inicial em segundos")
-    max_co: float = Field(default=1, gt=0, le=1.0, description="Número de Courant máximo para capturar KH")
-    max_alpha_co: float = Field(default=0.5, gt=0, le=1.0, description="Courant máximo da interface (maxAlphaCo)")
+    max_co: float = Field(default=1.0, gt=0, le=1.0, description="Número de Courant máximo")
+    max_alpha_co: float = Field(default=0.5, gt=0, le=1.0, description="Courant máximo da interface")
     max_delta_t: float = Field(default=0.01, gt=0, description="Passo de tempo máximo permitido em segundos")
-    write_interval: float = Field(default=0.01, gt=0, description="Frequência alta de gravação para animação das ondas")
-    
-    # Geometria do duto
-    diameter: float = Field(default=0.05, gt=0, description="Diâmetro em metros")
-    length: float = Field(default=2.0, gt=0, description="Comprimento em metros")
-    
-    # Condições de Entrada - Kelvin-Helmholtz (Cisalhamento Elevado ΔU = 1.0 m/s)
-    velocity_water: float = Field(default=0.6, gt=0, description="Velocidade da fase água (fundo) em m/s")
-    velocity_oil: float = Field(default=1.30, gt=0, description="Velocidade da fase óleo (topo) em m/s")
-    velocity_inlet: float = Field(default=0.70, gt=0, description="Velocidade média equivalente de entrada em m/s")
-    
+    write_interval: float = Field(default=0.1, gt=0, description="Frequência de gravação")
+
+    # ==========================================================================
+    # DADOS EXPERIMENTAIS DO ENSAIO (MukherjeeHor 1979 - GLDataID = 26894)
+    # ==========================================================================
+    DIAMETER: ClassVar[float] = 0.0381             # Diâmetro interno (m)
+    LENGTH: ClassVar[float] = 2.0                  # Comprimento do domínio (m)
+    ALPHA_OIL: ClassVar[float] = 0.08              # Fração volumétrica do óleo (fundo)
+    U_SUPERFICIAL_OIL: ClassVar[float] = 0.039624  # Velocidade superficial do óleo (m/s)
+    U_SUPERFICIAL_GAS: ClassVar[float] = 3.483864  # Velocidade superficial do gás (m/s)
+
+    AREA: ClassVar[float] = math.pi * (DIAMETER ** 2) / 4.0
+    ALPHA_GAS: ClassVar[float] = 1.0 - ALPHA_OIL
+
+    # ==========================================================================
+    # GEOMETRIA E PAREDE
+    # ==========================================================================
+    diameter: float = Field(default=DIAMETER, gt=0, description="Diâmetro interno em metros")
+    length: float = Field(default=LENGTH, gt=0, description="Comprimento do domínio em metros")
+    roughness: float = Field(default=3.00228e-5, ge=0.0, description="Rugosidade absoluta Ks da parede em metros")
+
+    # ==========================================================================
+    # FRAÇÕES VOLUMÉTRICAS E VELOCIDADES REAIS DE ENTRADA
+    # ==========================================================================
+    inlet_alpha_oil: float = Field(
+        default=ALPHA_OIL, ge=0.0, le=1.0, description="Fração volumétrica de óleo na entrada (fundo)"
+    )
+    inlet_alpha_gas: float = Field(
+        default=ALPHA_GAS, ge=0.0, le=1.0, description="Fração volumétrica de gás na entrada (topo)"
+    )
+
+    velocity_oil: float = Field(
+        default=U_SUPERFICIAL_OIL / ALPHA_OIL,
+        gt=0,
+        description="Velocidade real da fase óleo (fundo) em m/s"
+    )
+    velocity_gas: float = Field(
+        default=U_SUPERFICIAL_GAS / ALPHA_GAS,
+        gt=0,
+        description="Velocidade real da fase gás (topo) em m/s"
+    )
+    velocity_inlet: float = Field(
+        default=U_SUPERFICIAL_OIL + U_SUPERFICIAL_GAS,
+        gt=0,
+        description="Velocidade média equivalente de entrada (U_sl + U_sg) em m/s"
+    )
+
     initial_velocity_x: float = Field(default=1e-6, ge=0, description="Velocidade inicial em X")
-    inlet_alpha_water: float =Field(default=0.75, ge=0.0, le=1.0, description="Fração de água na entrada (interface no meio)")
 
     # Modelo de Turbulência
     turbulence_model: str = Field(default="kOmegaSST", description="Modelo RAS de turbulência")
-    
-    # Propriedades dos Fluidos (Água e Óleo)
-    water: FluidProps = Field(default_factory=lambda: FluidProps(rho=998.2, nu=1e-6))
-    oil: FluidProps = Field(default_factory=lambda: FluidProps(rho=890.0, nu=1e-5))
-    
-    # Tensão superficial entre água e óleo
-    sigma: float = Field(default=0.03, ge=0, description="Tensão superficial N/m")
+
+    # Propriedades dos Fluidos (nu = mu / rho da planilha)
+    oil: FluidProps = Field(default_factory=lambda: FluidProps(rho=801.7835916, nu=1.696075e-6))
+    gas: FluidProps = Field(default_factory=lambda: FluidProps(rho=2.376139379, nu=4.206921e-6))
+
+    # Tensão superficial entre óleo e gás
+    sigma: float = Field(default=0.024298, ge=0, description="Tensão superficial N/m")
 
     # Malha e Paralelismo
     mesh_factor: float = 1
     num_processors: int = 10
 
-    # Atalhos e Retrocompatibilidade
+    # ==========================================================================
+    # PROPRIEDADES DERIVADAS E RETROCOMPATIBILIDADE
+    # ==========================================================================
     @property
     def delta_u(self) -> float:
-        """Diferença de velocidade interfacial que alimenta a instabilidade de KH."""
-        return abs(self.velocity_water - self.velocity_oil)
+        return abs(self.velocity_gas - self.velocity_oil)
 
     @property
     def nx(self) -> int:
@@ -59,14 +98,6 @@ class SimulationConfig(BaseModel):
     @property
     def nz(self) -> int:
         return int(100 * self.mesh_factor)
-    
-    @property
-    def water_density(self) -> float:
-        return self.water.rho
-
-    @property
-    def water_viscosity(self) -> float:
-        return self.water.nu
 
     @property
     def oil_density(self) -> float:
@@ -77,13 +108,25 @@ class SimulationConfig(BaseModel):
         return self.oil.nu
 
     @property
+    def gas_density(self) -> float:
+        return self.gas.rho
+
+    @property
+    def gas_viscosity(self) -> float:
+        return self.gas.nu
+
+    @property
     def inlet_flow_rate(self) -> float:
         area = math.pi * (self.diameter / 2.0) ** 2
         return self.velocity_inlet * area
 
     @property
-    def reynolds_water(self) -> float:
-        return (self.velocity_water * self.diameter) / self.water.nu
+    def reynolds_oil(self) -> float:
+        return (self.velocity_oil * self.diameter) / self.oil.nu
+
+    @property
+    def reynolds_gas(self) -> float:
+        return (self.velocity_gas * self.diameter) / self.gas.nu
 
     @property
     def surface_tension(self) -> float:

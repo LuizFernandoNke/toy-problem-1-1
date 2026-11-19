@@ -110,7 +110,7 @@ FoamFile
 
 solvers
 {
-    "alpha.water.*"
+    "alpha.oil.*"
     {
         nAlphaCorr      2;
         nAlphaSubCycles 2;
@@ -123,27 +123,37 @@ solvers
         preconditioner  DIC;
         tolerance       1e-05;
         relTol          0;
+        maxIter         100;
     }
 
     p_rgh
     {
         solver          GAMG;
         tolerance       1e-06;
-        relTol          0.05;
-        smoother        GaussSeidel;
+        relTol          0.01;
+        smoother        DICGaussSeidel;
+        nPreSweeps      0;
+        nPostSweeps     2;
+        cacheAgglomeration on;
+        agglomerator    faceAreaPair;
+        nCellsInCoarsestLevel 10;
+        mergeLevels     1;
+        maxIter         100;
     }
 
     p_rghFinal
     {
         $p_rgh;
+        tolerance       1e-06;
         relTol          0;
+        maxIter         150;
     }
 
     "U.*"
     {
         solver          PBiCGStab;
         preconditioner  DILU;
-        tolerance       1e-08;
+        tolerance       1e-06;
         relTol          0.1;
     }
 
@@ -160,7 +170,7 @@ solvers
 PIMPLE
 {
     momentumPredictor   yes;
-    nOuterCorrectors    2;
+    nOuterCorrectors    1;
     nCorrectors         2;
     nNonOrthogonalCorrectors 0;
 }
@@ -172,7 +182,7 @@ relaxationFactors
         "U.*"           1.0;
         "k.*"           1.0;
         "omega.*"       1.0;
-        "alpha.water.*" 1.0;
+        "alpha.oil.*"   1.0;
     }
 }
 // ************************************************************************* //
@@ -280,6 +290,7 @@ fields
 (
     p_rgh
     U
+    alpha.oil
 );
 
 // ************************************************************************* //

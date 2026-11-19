@@ -6,10 +6,11 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from config.simulation_config import SimulationConfig
 
+
 def setup_constant_files(cfg: SimulationConfig, case_dir: Path, model_name: str = None):
     """
     Gera todos os arquivos da pasta 'constant' (fluidos, turbulência e gravidade)
-    utilizando f-strings puras do Python.
+    utilizando f-strings puras do Python, padronizado para Óleo e Gás.
     """
     constant_dir = case_dir / "constant"
     constant_dir.mkdir(parents=True, exist_ok=True)
@@ -41,14 +42,12 @@ value           (0 -9.81 0);
 
 // ************************************************************************* //
 """
-    g_path = constant_dir / "g"
-    with open(g_path, "w", encoding="utf-8") as f:
-        f.write(g_props)
+    (constant_dir / "g").write_text(g_props, encoding="utf-8")
 
     # -------------------------------------------------------------------------
     # 2. Configurar Propriedades de Transporte dos Fluidos (constant/transportProperties)
     # -------------------------------------------------------------------------
-    sigma_val = getattr(cfg, 'sigma', getattr(cfg, 'surface_tension', 0.03))
+    sigma_val = getattr(cfg, "sigma", getattr(cfg, "surface_tension", 0.024298))
 
     transport_props = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                                                                |
@@ -67,14 +66,7 @@ FoamFile
 }}
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-phases          (water oil);
-
-water
-{{
-    transportModel  Newtonian;
-    nu              {cfg.water.nu};
-    rho             {cfg.water.rho};
-}}
+phases          (oil gas);
 
 oil
 {{
@@ -83,13 +75,18 @@ oil
     rho             {cfg.oil.rho};
 }}
 
+gas
+{{
+    transportModel  Newtonian;
+    nu              {cfg.gas.nu};
+    rho             {cfg.gas.rho};
+}}
+
 sigma           {sigma_val};
 
 // ************************************************************************* //
 """
-    transport_path = constant_dir / "transportProperties"
-    with open(transport_path, "w", encoding="utf-8") as f:
-        f.write(transport_props)
+    (constant_dir / "transportProperties").write_text(transport_props, encoding="utf-8")
 
     # -------------------------------------------------------------------------
     # 3. Configurar Modelo de Turbulência (constant/turbulenceProperties)
@@ -126,21 +123,22 @@ RAS
 """
     # Grava o arquivo exigido pelo solver
     (constant_dir / "turbulenceProperties").write_text(turb_props, encoding="utf-8")
-    
+
     # Grava também momentumTransport por compatibilidade
-    (constant_dir / "momentumTransport").write_text(turb_props.replace("turbulenceProperties", "momentumTransport"), encoding="utf-8")
+    (constant_dir / "momentumTransport").write_text(
+        turb_props.replace("turbulenceProperties", "momentumTransport"), encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":
     config = SimulationConfig()
     base_runs = Path(__file__).resolve().parent.parent / "runs"
-    
-    # Mapeia cada pasta para seu respectivo modelo RANS
+
     cases_models = {
         "run_kEpsilon": "kEpsilon",
-        "run_kOmegaSST": "kOmegaSST"
+        "run_kOmegaSST": "kOmegaSST",
     }
-    
+
     for case_name, model in cases_models.items():
         case_path = base_runs / case_name
         setup_constant_files(config, case_path, model_name=model)

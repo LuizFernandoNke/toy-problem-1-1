@@ -1,36 +1,62 @@
+import math
 import sys
 from pathlib import Path
 
-# Adiciona o diretório raiz do projeto ao sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from config.simulation_config import SimulationConfig
 
+
+def calcular_y_interface(R: float, alpha_target: float) -> float:
+    """
+    Calcula a coordenada vertical y_base exata para um segmento circular
+    ocupar a fração de área alpha_target dentro de um tubo de raio R.
+    """
+    if alpha_target <= 0.0:
+        return -R
+    if alpha_target >= 1.0:
+        return R
+    if math.isclose(alpha_target, 0.5):
+        return 0.0
+
+    target = 2.0 * math.pi * alpha_target
+    low, high = 0.0, 2.0 * math.pi
+    for _ in range(60):
+        mid = 0.5 * (low + high)
+        if mid - math.sin(mid) < target:
+            low = mid
+        else:
+            high = mid
+    theta = 0.5 * (low + high)
+    return -R * math.cos(0.5 * theta)
+
+
 def setup_zero_files(cfg: SimulationConfig, case_dir: Path):
     """
     Gera todos os ficheiros do diretório 0/ e o setFieldsDict em system/
-    para escoamento estratificado ÓLEO-ÁGUA com instabilidade de Kelvin-Helmholtz.
+    para escoamento estratificado ÓLEO-GÁS com perfil de entrada Hagen-Poiseuille.
     """
     zero_dir = case_dir / "0"
     zero_dir.mkdir(parents=True, exist_ok=True)
     system_dir = case_dir / "system"
     system_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Leitura correta das variáveis definidas no simulation_config.py
-    u_water = cfg.velocity_water  # m/s (Água no fundo)
-    u_oil = cfg.velocity_oil      # m/s (Óleo no topo)
-    u_avg = (u_oil + u_water) / 2.0
-    du = u_oil - u_water
+    # 1. Leitura sincronizada das variáveis (Óleo no fundo, Gás no topo)
+    u_oil = cfg.velocity_oil  # m/s (Fase inferior - óleo)
+    u_gas = cfg.velocity_gas  # m/s (Fase superior - gás)
+    u_avg = (u_gas + u_oil) / 2.0
+    du = u_gas - u_oil
 
     R = cfg.diameter / 2.0
     L = cfg.length
-    
-    # Altura base da interface a partir de inlet_alpha_water (0.5 = centro y=0)
-    alpha_target = getattr(cfg, 'inlet_alpha_water', 0.5)
-    y_base = 0.0 if alpha_target == 0.5 else R * (2.0 * alpha_target - 1.0)
 
-    # --- 1. alpha.water ---
-    alpha_water_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
+    alpha_target = cfg.inlet_alpha_oil
+    y_base = calcular_y_interface(R, alpha_target)
+
+    # --- 1. alpha.oil (Entrada estratificada plana) ---
+
+    phase_field_name = "alpha.oil"
+    alpha_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
 |  \\\\    /   O peration     | Version:  v2606                                 |
@@ -42,7 +68,7 @@ FoamFile
     version     2.0;
     format      ascii;
     class       volScalarField;
-    object      alpha.water;
+    object      {phase_field_name};
 }}
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -62,19 +88,11 @@ boundaryField
         #{{
             const vectorField& C = patch().Cf();
             scalarField& alpha = *this;
-            const scalar t = db().time().value();
-
-            const scalar R = {R:.6f};
             const scalar y0 = {y_base:.6f};
-            // Amplitude ajustada para perturbação entre dois líquidos
-            const scalar amplitude = 0.3 * R;
-            const scalar freq = 1.; // Hz
-
-            const scalar y_interface = y0 + amplitude * std::sin(2.0 * M_PI * freq * t);
 
             forAll(C, i)
             {{
-                alpha[i] = (C[i].y() <= y_interface) ? 1.0 : 0.0;
+                alpha[i] = (C[i].y() <= y0) ? 1.0 : 0.0;
             }}
         #}};
     }}
@@ -92,9 +110,9 @@ boundaryField
 
 // ************************************************************************* //
 """
-    (zero_dir / "alpha.water").write_text(alpha_water_content, encoding="utf-8")
+    (zero_dir / phase_field_name).write_text(alpha_content, encoding="utf-8")
 
-    # --- 2. U (Campo de Velocidades com Cisalhamento tanh) ---
+    # --- 2. U (Perfil Parabólico de Hagen-Poiseuille Bifásico na Entrada) ---
     u_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -113,30 +131,39 @@ FoamFile
 
 dimensions      [0 1 -1 0 0 0 0];
 
-internalField   uniform (0 0 {u_avg});
+internalField   uniform (0 0 {u_avg:.6f});
 
 boundaryField
 {{
     inlet
     {{
         type            codedFixedValue;
-        value           uniform (0 0 {u_avg});
-        name            shearInletProfile;
+        value           uniform (0 0 {u_avg:.6f});
+        name            hagenPoiseuilleInletProfile;
 
         code
         #{{
+            const scalar R = {R:.6f};
             const scalar Uavg = {u_avg:.6f};
             const scalar dU = {du:.6f};
             const scalar y0 = {y_base:.6f};
-            const scalar delta = 0.002; // Espessura da camada de transição (2mm)
+            const scalar delta = 0.0015; // Camada de transição suave na interface (1.5 mm)
 
             const vectorField& C = patch().Cf();
             vectorField& U = *this;
 
             forAll(C, i)
             {{
+                scalar x = C[i].x();
                 scalar y = C[i].y();
-                scalar uz = Uavg + 0.5 * dU * std::tanh((y - y0) / delta);
+                scalar r2 = x * x + y * y;
+                scalar rRatio2 = Foam::min(r2 / (R * R), 1.0);
+
+                // Velocidade média local da fase (fundo -> u_oil, topo -> u_gas)
+                scalar u_phase = Uavg + 0.5 * dU * std::tanh((y - y0) / delta);
+
+                // Fator parabólico de Hagen-Poiseuille: 2 * (1 - (r/R)^2)
+                scalar uz = 2.0 * u_phase * (1.0 - rRatio2);
                 U[i] = vector(0, 0, uz);
             }}
         #}};
@@ -247,8 +274,17 @@ boundaryField
 """
     (zero_dir / "omega").write_text(omega_content, encoding="utf-8")
 
-    # --- 5. nut ---
-    nut_content = """/*--------------------------------*- C++ -*----------------------------------*\\
+    # --- 5. nut (Parede rugosa ou lisa conforme cfg.roughness) ---
+    if cfg.roughness > 0:
+        walls_nut_block = f"""        type            nutkRoughWallFunction;
+        Ks              uniform {cfg.roughness};
+        Cs              uniform 0.5;
+        value           uniform 0;"""
+    else:
+        walls_nut_block = """        type            nutkWallFunction;
+        value           uniform 0;"""
+
+    nut_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
 |  \\\\    /   O peration     | Version:  v2606                                 |
@@ -256,12 +292,12 @@ boundaryField
 |    \\\\/     M anipulation  |                                                 |
 \\*---------------------------------------------------------------------------*/
 FoamFile
-{
+{{
     version     2.0;
     format      ascii;
     class       volScalarField;
     object      nut;
-}
+}}
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 dimensions      [0 2 -1 0 0 0 0];
@@ -269,19 +305,18 @@ dimensions      [0 2 -1 0 0 0 0];
 internalField   uniform 0;
 
 boundaryField
-{
+{{
     walls
-    {
-        type            nutkWallFunction;
-        value           uniform 0;
-    }
+    {{
+{walls_nut_block}
+    }}
 
     ".*"
-    {
+    {{
         type            calculated;
         value           uniform 0;
-    }
-}
+    }}
+}}
 
 // ************************************************************************* //
 """
@@ -333,7 +368,7 @@ boundaryField
 """
     (zero_dir / "p_rgh").write_text(p_rgh_content, encoding="utf-8")
 
-    # --- 7. setFieldsDict ---
+    # --- 7. setFieldsDict (Inicializa Fases e Velocidades no interior do duto) ---
     set_fields_dict = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -350,19 +385,23 @@ FoamFile
 }}
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+// Região superior (Gás): alpha.oil = 0 e U = u_gas
 defaultFieldValues
 (
-    volScalarFieldValue alpha.water 0
+    volScalarFieldValue {phase_field_name} 0
+    volVectorFieldValue U (0 0 {u_gas:.6f})
 );
 
 regions
 (
+    // Região inferior (Óleo): alpha.oil = 1 e U = u_oil
     boxToCell
     {{
-        box ({-R*1.1} {-R*1.1} -0.1) ({R*1.1} {y_base} {L*1.1});
+        box ({-R*1.1:.6f} {-R*1.1:.6f} -0.1) ({R*1.1:.6f} {y_base:.6f} {L*1.1:.6f});
         fieldValues
         (
-            volScalarFieldValue alpha.water 1
+            volScalarFieldValue {phase_field_name} 1
+            volVectorFieldValue U (0 0 {u_oil:.6f})
         );
     }}
 );
@@ -371,7 +410,8 @@ regions
 """
     (system_dir / "setFieldsDict").write_text(set_fields_dict, encoding="utf-8")
 
-    print("Ficheiros do diretório '0/' e 'system/setFieldsDict' gerados com sucesso.")
+    print("Ficheiros do diretório '0/' e 'system/setFieldsDict' (Óleo-Gás) gerados com sucesso.")
+
 
 if __name__ == "__main__":
     config = SimulationConfig()
