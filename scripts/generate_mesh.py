@@ -10,8 +10,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from config.simulation_config import SimulationConfig
 
-def generate_blockmesh_dict(cfg: SimulationConfig, output_path: Path, wall_expansion_ratio: float = 4.0):
-    """Generate a cylindrical O-grid (butterfly) blockMeshDict file with wall refinement based on SimulationConfig."""
+def generate_blockmesh_dict(cfg: SimulationConfig, output_path: Path, wall_expansion_ratio: float = 2.0):
+    """Generate a cylindrical O-grid (butterfly) blockMeshDict optimized for stratified bottom film flow."""
     
     # Parâmetros geométricos
     R = cfg.diameter / 2.0
@@ -24,15 +24,16 @@ def generate_blockmesh_dict(cfg: SimulationConfig, output_path: Path, wall_expan
     c0 = r0 * math.cos(math.radians(45))  # Núcleo central
     c1 = R * math.cos(math.radians(45))   # Borda externa do tubo
     
-    # Parâmetros de resolução da malha
-    n_core = max(8, int(10 * cfg.mesh_factor))    # Células ao longo do núcleo
-    n_radial = max(16, int(20 * cfg.mesh_factor))  # Células radiais
-    nz = max(10, int(100 * cfg.mesh_factor))      # Células ao longo do comprimento (z)
+    # Parâmetros de resolução da malha (redistribuídos para concentrar células na interface inferior)
+    n_core = max(8, int(10 * cfg.mesh_factor))            # Células ao longo do núcleo
+    n_radial_bottom = max(18, int(26 * cfg.mesh_factor))  # Mais células no fundo (lâmina de óleo + interface)
+    n_radial_other = max(12, int(14 * cfg.mesh_factor))   # Menos células no topo/laterais (gás puro)
+    nz = max(10, int(100 * cfg.mesh_factor))              # Células ao longo do comprimento (z)
 
     content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2312                                 |
+|  \\\\    /   O peration     | Version:  v2606                                 |
 |   \\\\  /    A nd           | Website:  www.openfoam.com                      |
 |    \\\\/     M anipulation  |                                                 |
 \\*---------------------------------------------------------------------------*/
@@ -50,26 +51,22 @@ scale 1;
 vertices
 (
     // ================= Nível z = 0 =================
-    // 0..3: Núcleo central quadrado
     ({-c0:.6f} {-c0:.6f} 0.0) // 0
     ( {c0:.6f} {-c0:.6f} 0.0) // 1
     ( {c0:.6f}  {c0:.6f} 0.0) // 2
     ({-c0:.6f}  {c0:.6f} 0.0) // 3
 
-    // 4..7: Borda cilíndrica externa
     ( {c1:.6f} {-c1:.6f} 0.0) // 4
     ( {c1:.6f}  {c1:.6f} 0.0) // 5
     ({-c1:.6f}  {c1:.6f} 0.0) // 6
     ({-c1:.6f} {-c1:.6f} 0.0) // 7
 
     // ================= Nível z = {L:.6f} =================
-    // 8..11: Núcleo central projetado na saída
     ({-c0:.6f} {-c0:.6f} {L:.6f}) // 8
     ( {c0:.6f} {-c0:.6f} {L:.6f}) // 9
     ( {c0:.6f}  {c0:.6f} {L:.6f}) // 10
     ({-c0:.6f}  {c0:.6f} {L:.6f}) // 11
 
-    // 12..15: Borda cilíndrica externa projetada na saída
     ( {c1:.6f} {-c1:.6f} {L:.6f}) // 12
     ( {c1:.6f}  {c1:.6f} {L:.6f}) // 13
     ({-c1:.6f}  {c1:.6f} {L:.6f}) // 14
@@ -78,16 +75,16 @@ vertices
 
 blocks
 (
-    // Bloco 0: Núcleo central (uniforme no centro)
+    // Bloco 0: Núcleo central
     hex (0 1 2 3 8 9 10 11) ({n_core} {n_core} {nz}) simpleGrading (1 1 1)
 
-    // Blocos 1..4: Setores radiais curvados
-    // O eixo Y local vai da parede externa (r=R) até o núcleo (r=r0).
-    // simpleGrading (1 {wall_expansion_ratio} 1) gera células mais finas na parede externa.
-    hex (7 4 1 0 15 12 9 8)   ({n_core} {n_radial} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
-    hex (4 5 2 1 12 13 10 9)   ({n_core} {n_radial} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
-    hex (5 6 3 2 13 14 11 10)  ({n_core} {n_radial} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
-    hex (6 7 0 3 14 15 8 11)   ({n_core} {n_radial} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
+    // Bloco 1 (INFERIOR - Óleo e Interface): Alta resolução radial
+    hex (7 4 1 0 15 12 9 8)   ({n_core} {n_radial_bottom} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
+
+    // Blocos 2..4 (Laterais e Topo - Gás): Resolução otimizada para Courant e y+
+    hex (4 5 2 1 12 13 10 9)   ({n_core} {n_radial_other} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
+    hex (5 6 3 2 13 14 11 10)  ({n_core} {n_radial_other} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
+    hex (6 7 0 3 14 15 8 11)   ({n_core} {n_radial_other} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
 );
 
 edges
@@ -163,7 +160,7 @@ if __name__ == "__main__":
     target_path = Path("template_case/system/blockMeshDict")
     
     # wall_expansion_ratio define a razão entre a célula no centro e a célula na parede.
-    generate_blockmesh_dict(config, target_path, wall_expansion_ratio=6.0)
+    generate_blockmesh_dict(config, target_path, wall_expansion_ratio=3.0)
 
     # Executa automaticamente o comando blockMesh no OpenFOAM
     print("Executing blockMesh in OpenFOAM...")
