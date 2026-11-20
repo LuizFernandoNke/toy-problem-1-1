@@ -229,8 +229,9 @@ internalField   #codeStream
             scalar u_oil_mean = Uavg - 0.5 * dU;
             scalar u_gas_mean = Uavg + 0.5 * dU;
 
-            // Perfil parabólico laminar (Hagen-Poiseuille) para o óleo
-            scalar prof_oil = 2.0 * (1.0 - rRatio * rRatio);
+            // Perfil parabólico laminar normalizado na espessura da película de óleo
+            scalar eta_oil = Foam::clamp((y + R) / Foam::max(y0 + R, 1e-6), 0.0, 1.0);
+            scalar prof_oil = 1.5 * (2.0 * eta_oil - eta_oil * eta_oil);
 
             // Perfil de Prandtl-Nikuradse (Lei de Potência 1/7) para o gás turbulento
             scalar prof_gas = 1.224 * Foam::pow(Foam::max(1.0 - rRatio, 1e-6), 1.0 / 7.0);
@@ -276,8 +277,9 @@ boundaryField
                 scalar u_oil_mean = Uavg - 0.5 * dU;
                 scalar u_gas_mean = Uavg + 0.5 * dU;
 
-                // Perfil parabólico laminar (Hagen-Poiseuille) para o óleo
-                scalar prof_oil = 2.0 * (1.0 - rRatio * rRatio);
+                // Perfil parabólico laminar normalizado na espessura da película de óleo
+                scalar eta_oil = Foam::clamp((y + R) / Foam::max(y0 + R, 1e-6), 0.0, 1.0);
+                scalar prof_oil = 1.5 * (2.0 * eta_oil - eta_oil * eta_oil);
 
                 // Perfil de Prandtl-Nikuradse (Lei de Potência 1/7) para o gás turbulento
                 scalar prof_gas = 1.224 * Foam::pow(Foam::max(1.0 - rRatio, 1e-6), 1.0 / 7.0);
