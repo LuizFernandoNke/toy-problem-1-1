@@ -12,10 +12,10 @@ class SimulationConfig(BaseModel):
     case_name: str = "PipeFlow_Oil_Gas_Stratified"
 
     # Controle de Tempo e Estabilidade Numérica
-    end_time: float = Field(default=8, gt=0, description="Tempo final de simulação em segundos")
+    end_time: float = Field(default=5, gt=0, description="Tempo final de simulação em segundos")
     delta_t: float = Field(default=1e-5, gt=0, description="Passo de tempo inicial em segundos")
-    max_co: float = Field(default=1.0, gt=0, le=1.0, description="Número de Courant máximo")
-    max_alpha_co: float = Field(default=0.5, gt=0, le=1.0, description="Courant máximo da interface")
+    max_co: float = Field(default=0.5, gt=0, le=1.0, description="Número de Courant máximo")
+    max_alpha_co: float = Field(default=0.25, gt=0, le=1.0, description="Courant máximo da interface")
     max_delta_t: float = Field(default=0.01, gt=0, description="Passo de tempo máximo permitido em segundos")
     write_interval: float = Field(default=0.1, gt=0, description="Frequência de gravação")
 

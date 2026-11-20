@@ -24,11 +24,10 @@ def generate_blockmesh_dict(cfg: SimulationConfig, output_path: Path, wall_expan
     c0 = r0 * math.cos(math.radians(45))  # Núcleo central
     c1 = R * math.cos(math.radians(45))   # Borda externa do tubo
     
-    # Parâmetros de resolução da malha (redistribuídos para concentrar células na interface inferior)
-    n_core = max(8, int(10 * cfg.mesh_factor))            # Células ao longo do núcleo
-    n_radial_bottom = max(18, int(26 * cfg.mesh_factor))  # Mais células no fundo (lâmina de óleo + interface)
-    n_radial_other = max(12, int(14 * cfg.mesh_factor))   # Menos células no topo/laterais (gás puro)
-    nz = max(10, int(100 * cfg.mesh_factor))              # Células ao longo do comprimento (z)
+    # Parâmetros de resolução da malha (conformes entre blocos adjacentes)
+    n_core = max(8, int(10 * cfg.mesh_factor))    # Células ao longo do núcleo
+    n_radial = max(16, int(20 * cfg.mesh_factor))  # Mesmo número nos 4 setores (requisito do blockMesh)
+    nz = max(10, int(100 * cfg.mesh_factor))      # Células ao longo do comprimento (z)
 
     content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
@@ -78,13 +77,11 @@ blocks
     // Bloco 0: Núcleo central
     hex (0 1 2 3 8 9 10 11) ({n_core} {n_core} {nz}) simpleGrading (1 1 1)
 
-    // Bloco 1 (INFERIOR - Óleo e Interface): Alta resolução radial
-    hex (7 4 1 0 15 12 9 8)   ({n_core} {n_radial_bottom} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
-
-    // Blocos 2..4 (Laterais e Topo - Gás): Resolução otimizada para Courant e y+
-    hex (4 5 2 1 12 13 10 9)   ({n_core} {n_radial_other} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
-    hex (5 6 3 2 13 14 11 10)  ({n_core} {n_radial_other} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
-    hex (6 7 0 3 14 15 8 11)   ({n_core} {n_radial_other} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
+    // Blocos 1..4: Setores radiais curvados (mesmo n_radial para conformidade nas diagonais)
+    hex (7 4 1 0 15 12 9 8)   ({n_core} {n_radial} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
+    hex (4 5 2 1 12 13 10 9)   ({n_core} {n_radial} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
+    hex (5 6 3 2 13 14 11 10)  ({n_core} {n_radial} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
+    hex (6 7 0 3 14 15 8 11)   ({n_core} {n_radial} {nz}) simpleGrading (1 {wall_expansion_ratio} 1)
 );
 
 edges

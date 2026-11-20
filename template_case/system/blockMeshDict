@@ -1,7 +1,7 @@
 /*--------------------------------*- C++ -*----------------------------------*\
 | =========                 |                                                 |
 | \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     | Version:  v2312                                 |
+|  \\    /   O peration     | Version:  v2606                                 |
 |   \\  /    A nd           | Website:  www.openfoam.com                      |
 |    \\/     M anipulation  |                                                 |
 \*---------------------------------------------------------------------------*/
@@ -19,26 +19,22 @@ scale 1;
 vertices
 (
     // ================= Nível z = 0 =================
-    // 0..3: Núcleo central quadrado
     (-0.006735 -0.006735 0.0) // 0
     ( 0.006735 -0.006735 0.0) // 1
     ( 0.006735  0.006735 0.0) // 2
     (-0.006735  0.006735 0.0) // 3
 
-    // 4..7: Borda cilíndrica externa
     ( 0.013470 -0.013470 0.0) // 4
     ( 0.013470  0.013470 0.0) // 5
     (-0.013470  0.013470 0.0) // 6
     (-0.013470 -0.013470 0.0) // 7
 
     // ================= Nível z = 2.000000 =================
-    // 8..11: Núcleo central projetado na saída
     (-0.006735 -0.006735 2.000000) // 8
     ( 0.006735 -0.006735 2.000000) // 9
     ( 0.006735  0.006735 2.000000) // 10
     (-0.006735  0.006735 2.000000) // 11
 
-    // 12..15: Borda cilíndrica externa projetada na saída
     ( 0.013470 -0.013470 2.000000) // 12
     ( 0.013470  0.013470 2.000000) // 13
     (-0.013470  0.013470 2.000000) // 14
@@ -47,16 +43,14 @@ vertices
 
 blocks
 (
-    // Bloco 0: Núcleo central (uniforme no centro)
+    // Bloco 0: Núcleo central
     hex (0 1 2 3 8 9 10 11) (10 10 100) simpleGrading (1 1 1)
 
-    // Blocos 1..4: Setores radiais curvados
-    // O eixo Y local vai da parede externa (r=R) até o núcleo (r=r0).
-    // simpleGrading (1 6.0 1) gera células mais finas na parede externa.
-    hex (7 4 1 0 15 12 9 8)   (10 20 100) simpleGrading (1 6.0 1)
-    hex (4 5 2 1 12 13 10 9)   (10 20 100) simpleGrading (1 6.0 1)
-    hex (5 6 3 2 13 14 11 10)  (10 20 100) simpleGrading (1 6.0 1)
-    hex (6 7 0 3 14 15 8 11)   (10 20 100) simpleGrading (1 6.0 1)
+    // Blocos 1..4: Setores radiais curvados (mesmo n_radial para conformidade nas diagonais)
+    hex (7 4 1 0 15 12 9 8)   (10 20 100) simpleGrading (1 3.0 1)
+    hex (4 5 2 1 12 13 10 9)   (10 20 100) simpleGrading (1 3.0 1)
+    hex (5 6 3 2 13 14 11 10)  (10 20 100) simpleGrading (1 3.0 1)
+    hex (6 7 0 3 14 15 8 11)   (10 20 100) simpleGrading (1 3.0 1)
 );
 
 edges

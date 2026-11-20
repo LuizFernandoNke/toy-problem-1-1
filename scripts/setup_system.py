@@ -55,7 +55,7 @@ divSchemes
     "div\(phirb,alpha.*\)"                  Gauss linear;
     
     // Campos de Turbulencia RANS (Mantidos em upwind para estabilidade)
-    "div\(.*phi.*,(k|epsilon|omega|nut)\)"  Gauss upwind;
+    "div\(.*phi.*,(k|epsilon|omega|nut)\)"  bounded Gauss upwind;
     
     // Tensores de viscosidade e termos difusivos
     "div\(.*dev2\(T\(grad\(U\)\)\)\)"       Gauss linear;
@@ -121,22 +121,22 @@ solvers
     {
         solver          PCG;
         preconditioner  DIC;
-        tolerance       1e-05;
-        relTol          0;
-        maxIter         100;
+        tolerance       1e-04;
+        relTol          0.01;
+        maxIter         500;
     }
 
     p_rgh
     {
         solver          GAMG;
-        tolerance       1e-06;
-        relTol          0.01;
+        tolerance       1e-05;
+        relTol          0.05;
         smoother        DICGaussSeidel;
         nPreSweeps      0;
         nPostSweeps     2;
         cacheAgglomeration on;
         agglomerator    faceAreaPair;
-        nCellsInCoarsestLevel 10;
+        nCellsInCoarsestLevel 50;
         mergeLevels     1;
         maxIter         100;
     }
@@ -144,7 +144,7 @@ solvers
     p_rghFinal
     {
         $p_rgh;
-        tolerance       1e-06;
+        tolerance       5e-06;
         relTol          0;
         maxIter         150;
     }
@@ -170,19 +170,42 @@ solvers
 PIMPLE
 {
     momentumPredictor   yes;
-    nOuterCorrectors    1;
+    nOuterCorrectors    2;
     nCorrectors         2;
     nNonOrthogonalCorrectors 0;
+
+    residualControl
+    {
+        p_rgh
+        {
+            tolerance   5e-06;
+            relTol      0;
+        }
+        "U.*"
+        {
+            tolerance   1e-05;
+            relTol      0;
+        }
+    }
 }
 
 relaxationFactors
 {
+    fields
+    {
+        p_rgh           0.3;
+        p_rghFinal      1;
+    }
+
     equations
     {
-        "U.*"           1.0;
-        "k.*"           1.0;
-        "omega.*"       1.0;
-        "alpha.oil.*"   1.0;
+        U               0.7;
+        UFinal          1;
+        k               0.7;
+        kFinal          1;
+        omega           0.7;
+        omegaFinal      1;
+        "alpha.oil.*"   1;  
     }
 }
 // ************************************************************************* //

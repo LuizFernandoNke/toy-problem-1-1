@@ -1,2 +1,4 @@
 Model,z_Start_m,z_End_m,L_Sample_m,Time_Samples_Used,Grad_P_Exp_Pa_m,Grad_P_Martinelli_Pa_m,Grad_P_CFD_Pa_m,Error_CFD_vs_Exp_Pct,Error_CFD_vs_LM_Pct,Holdup_Exp,Holdup_Martinelli,Holdup_CFD,Error_Holdup_vs_Exp_Pct,LM_Parameter_X,LM_Chisholm_C,LM_PhiG2,yPlus_Min,yPlus_Max,yPlus_Avg,yPlus_Status,Mesh_Cells,Cores,Execution_Time_s,Timestamp
 kOmegaSST,1.1,1.7,0.6,15,14.8332,49.34,130.4561,779.49,164.4,0.08,0.13,0.1043,30.39,0.3638,12,5.4983,1.23,14.96,7.32,Buffer layer (1 < y+ < 30),90000,10,12552.1,2026-11-19 09:33:31
+kOmegaSST,1.1,1.7,0.6,15,14.8332,49.34,138.393,833.0,180.49,0.08,0.13,0.0555,30.68,0.3638,12,5.4983,0.0,0.0,0.0,Optimal (y+ < 1),90000,10,11380.3,2026-11-19 23:35:09
+kOmegaSST,1.1,1.7,0.6,15,14.8332,49.34,76.8906,418.37,55.84,0.08,0.13,0.1171,46.32,0.3638,12,5.4983,0.61,21.28,9.58,Buffer layer (1 < y+ < 30),90000,10,15401.3,2026-11-20 09:40:34

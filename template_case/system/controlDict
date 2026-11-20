@@ -18,7 +18,7 @@ application     interFoam;
 startFrom       startTime;
 startTime       0;
 stopAt          endTime;
-endTime         8;
+endTime         5;
 deltaT          1e-05;
 writeControl    runTime;
 writeInterval   0.1;
@@ -30,8 +30,8 @@ timeFormat      general;
 timePrecision   6;
 runTimeModifiable true;
 adjustTimeStep  yes;
-maxCo           1.0;
-maxAlphaCo      0.5;
+maxCo           0.5;
+maxAlphaCo      0.25;
 maxDeltaT       0.01;
 
 // ************************************************************************* //

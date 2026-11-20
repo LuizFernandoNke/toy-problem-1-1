@@ -275,17 +275,27 @@ def extract_yplus(case_dir: Path, num_cores: int) -> dict:
     yplus_base = case_dir / "postProcessing" / "yPlus"
     default_res = {"min": 0.0, "max": 0.0, "avg": 0.0, "status": "N/A"}
 
-    if not yplus_base.exists():
-        run_foam_cmd(case_dir, f"postProcess -case {case_dir} -func yPlus -latestTime", num_cores)
+    if yplus_base.exists():
+        shutil.rmtree(yplus_base, ignore_errors=True)
+
+    # Usa o solver multifásico diretamente em vez de 'postProcess' genérico
+    res = run_foam_cmd(case_dir, f"interFoam -case {case_dir} -postProcess -func yPlus -latestTime", num_cores)
 
     if not yplus_base.exists():
+        print(f"  [DEBUG yPlus] Pasta não criada. Erro OpenFOAM: {res.stderr.strip() if hasattr(res, 'stderr') else res}")
         return default_res
 
     yplus_files = list(yplus_base.glob("**/yPlus.dat"))
     if not yplus_files:
+        print(f"  [DEBUG yPlus] Nenhum yPlus.dat encontrado em {yplus_base}")
         return default_res
 
-    latest_file = max(yplus_files, key=lambda p: float(p.parent.name))
+    # Ordena de forma segura pelo nome numérico da pasta de tempo
+    latest_file = max(
+        yplus_files,
+        key=lambda p: float(p.parent.name) if p.parent.name.replace('.', '', 1).isdigit() else -1.0
+    )
+
     try:
         lines = [
             l.strip() for l in latest_file.read_text(encoding="utf-8", errors="ignore").splitlines()
@@ -294,12 +304,21 @@ def extract_yplus(case_dir: Path, num_cores: int) -> dict:
         if not lines:
             return default_res
 
-        last_line = lines[-1].split()
-        if len(last_line) >= 5:
-            y_min, y_max, y_avg = float(last_line[2]), float(last_line[3]), float(last_line[4])
-        elif len(last_line) >= 4:
-            y_min, y_max, y_avg = float(last_line[1]), float(last_line[2]), float(last_line[3])
+        # Filtra apenas os tokens que são números (ignora o nome do patch, ex: 'walls')
+        nums = []
+        for token in lines[-1].split():
+            try:
+                nums.append(float(token))
+            except ValueError:
+                continue
+
+        # Em yPlus.dat, os 4 valores numéricos são: [Time, min, max, average]
+        if len(nums) >= 4:
+            y_min, y_max, y_avg = nums[1], nums[2], nums[3]
+        elif len(nums) == 3:
+            y_min, y_max, y_avg = nums[0], nums[1], nums[2]
         else:
+            print(f"  [DEBUG yPlus] Formato inesperado na linha: {lines[-1]}")
             return default_res
 
         if y_avg < 1.0:
@@ -310,7 +329,9 @@ def extract_yplus(case_dir: Path, num_cores: int) -> dict:
             status = "Buffer layer (1 < y+ < 30)"
 
         return {"min": y_min, "max": y_max, "avg": y_avg, "status": status}
-    except Exception:
+
+    except Exception as e:
+        print(f"  [DEBUG yPlus] Erro ao ler {latest_file}: {e}")
         return default_res
 
 

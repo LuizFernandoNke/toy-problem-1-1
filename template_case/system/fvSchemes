@@ -37,7 +37,7 @@ divSchemes
     "div\(phirb,alpha.*\)"                  Gauss linear;
     
     // Campos de Turbulencia RANS (Mantidos em upwind para estabilidade)
-    "div\(.*phi.*,(k|epsilon|omega|nut)\)"  Gauss upwind;
+    "div\(.*phi.*,(k|epsilon|omega|nut)\)"  bounded Gauss upwind;
     
     // Tensores de viscosidade e termos difusivos
     "div\(.*dev2\(T\(grad\(U\)\)\)\)"       Gauss linear;

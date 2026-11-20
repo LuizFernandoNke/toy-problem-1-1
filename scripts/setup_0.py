@@ -400,7 +400,7 @@ boundaryField
         Cs              uniform 0.5;
         value           uniform 0;"""
     else:
-        walls_nut_block = """        type            nutkWallFunction;
+        walls_nut_block = """        type            nutUSpaldingWallFunction;
         value           uniform 0;"""
 
     nut_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
