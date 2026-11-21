@@ -27,23 +27,24 @@ gradSchemes
 divSchemes
 {
     default                         none;
-    
-    // Campo de velocidade/momento (limitedLinear evita a difusao excessiva do upwind)
-    "div\(.*phi.*,U\)"                      Gauss limitedLinear 1;
-    
+
+    // Campo de velocidade/momento
+    div(rhoPhi,U)                   Gauss linearUpwindV grad(U);
+    "div\(.*phi.*,U\)"              Gauss linearUpwindV grad(U);
+
     // Multifase (VOF / alpha)
-    "div\(phi,alpha.*\)"                    Gauss vanLeer;
-    "div\(phir,alpha.*\)"                   Gauss linear;
-    "div\(phirb,alpha.*\)"                  Gauss linear;
-    
-    // Campos de Turbulencia RANS (Mantidos em upwind para estabilidade)
-    "div\(.*phi.*,(k|epsilon|omega|nut)\)"  bounded Gauss upwind;
-    
+    "div\(phi,alpha.*\)"            Gauss vanLeer;
+    "div\(phir,alpha.*\)"           Gauss linear;
+    "div\(phirb,alpha.*\)"          Gauss linear;
+
+    // Campos de Turbulencia RANS
+    "div\(.*phi.*,(k|epsilon|omega|nut)\)" bounded Gauss upwind;
+
     // Tensores de viscosidade e termos difusivos
-    "div\(.*dev2\(T\(grad\(U\)\)\)\)"       Gauss linear;
-    
+    "div\(.*dev2\(T\(grad\(U\)\)\)\)"      Gauss linear;
+
     // Fallback generico
-    "div\(.*\)"                             Gauss linear;
+    "div\(.*\)"                     Gauss linear;
 }
 
 laplacianSchemes

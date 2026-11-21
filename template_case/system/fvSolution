@@ -42,17 +42,17 @@ solvers
         nPostSweeps     2;
         cacheAgglomeration on;
         agglomerator    faceAreaPair;
-        nCellsInCoarsestLevel 50;
+        nCellsInCoarsestLevel 10;
         mergeLevels     1;
-        maxIter         100;
+        maxIter         50;
     }
 
     p_rghFinal
     {
         $p_rgh;
-        tolerance       5e-06;
+        tolerance       1e-05;
         relTol          0;
-        maxIter         150;
+        maxIter         50;
     }
 
     "U.*"
@@ -75,10 +75,11 @@ solvers
 
 PIMPLE
 {
-    momentumPredictor   yes;
-    nOuterCorrectors    2;
-    nCorrectors         2;
-    nNonOrthogonalCorrectors 0;
+    momentumPredictor           yes;
+    correctPhi                  yes;
+    nOuterCorrectors            2;
+    nCorrectors                 2;
+    nNonOrthogonalCorrectors    0;
 
     residualControl
     {

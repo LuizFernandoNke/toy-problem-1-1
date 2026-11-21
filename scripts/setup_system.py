@@ -45,23 +45,24 @@ gradSchemes
 divSchemes
 {
     default                         none;
-    
-    // Campo de velocidade/momento (limitedLinear evita a difusao excessiva do upwind)
-    "div\(.*phi.*,U\)"                      Gauss limitedLinear 1;
-    
+
+    // Campo de velocidade/momento
+    div(rhoPhi,U)                   Gauss linearUpwindV grad(U);
+    "div\(.*phi.*,U\)"              Gauss linearUpwindV grad(U);
+
     // Multifase (VOF / alpha)
-    "div\(phi,alpha.*\)"                    Gauss vanLeer;
-    "div\(phir,alpha.*\)"                   Gauss linear;
-    "div\(phirb,alpha.*\)"                  Gauss linear;
-    
-    // Campos de Turbulencia RANS (Mantidos em upwind para estabilidade)
-    "div\(.*phi.*,(k|epsilon|omega|nut)\)"  bounded Gauss upwind;
-    
+    "div\(phi,alpha.*\)"            Gauss vanLeer;
+    "div\(phir,alpha.*\)"           Gauss linear;
+    "div\(phirb,alpha.*\)"          Gauss linear;
+
+    // Campos de Turbulencia RANS
+    "div\(.*phi.*,(k|epsilon|omega|nut)\)" bounded Gauss upwind;
+
     // Tensores de viscosidade e termos difusivos
-    "div\(.*dev2\(T\(grad\(U\)\)\)\)"       Gauss linear;
-    
+    "div\(.*dev2\(T\(grad\(U\)\)\)\)"      Gauss linear;
+
     // Fallback generico
-    "div\(.*\)"                             Gauss linear;
+    "div\(.*\)"                     Gauss linear;
 }
 
 laplacianSchemes
@@ -136,17 +137,17 @@ solvers
         nPostSweeps     2;
         cacheAgglomeration on;
         agglomerator    faceAreaPair;
-        nCellsInCoarsestLevel 50;
+        nCellsInCoarsestLevel 10;
         mergeLevels     1;
-        maxIter         100;
+        maxIter         50;
     }
 
     p_rghFinal
     {
         $p_rgh;
-        tolerance       5e-06;
+        tolerance       1e-05;
         relTol          0;
-        maxIter         150;
+        maxIter         50;
     }
 
     "U.*"
@@ -169,10 +170,11 @@ solvers
 
 PIMPLE
 {
-    momentumPredictor   yes;
-    nOuterCorrectors    2;
-    nCorrectors         2;
-    nNonOrthogonalCorrectors 0;
+    momentumPredictor           yes;
+    correctPhi                  yes;
+    nOuterCorrectors            2;
+    nCorrectors                 2;
+    nNonOrthogonalCorrectors    0;
 
     residualControl
     {

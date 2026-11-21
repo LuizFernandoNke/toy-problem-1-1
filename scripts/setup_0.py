@@ -292,7 +292,9 @@ boundaryField
 
     outlet
     {{
-        type            zeroGradient;
+        type            inletOutlet;
+        inletValue      uniform (0 0 0);
+        value           uniform (0 0 {u_avg:.6f});
     }}
 
     walls
